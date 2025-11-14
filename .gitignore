@@ -10,7 +10,7 @@ wheels/
 .venv
 venv/
 env/
-
+/.env
 # Caches do Python
 __pycache__/
 *.pyc

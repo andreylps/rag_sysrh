@@ -3,6 +3,8 @@ import logging
 from langchain_classic.agents import AgentExecutor, create_react_agent
 from langchain_classic.memory.buffer import ConversationBufferMemory
 from langchain_core.prompts import PromptTemplate
+from langchain_core.tools import Tool
+from langchain_openai import ChatOpenAI
 
 # Configura o logging
 logging.basicConfig(
@@ -10,7 +12,7 @@ logging.basicConfig(
 )
 
 
-def build_agent(llm, tools):  # noqa: ANN001, ANN201
+def build_agent(tools: list[Tool]) -> AgentExecutor:
     """Cria o Agente LangChain com as ferramentas fornecidas."""
     # Prompt no formato ReAct esperado pelo create_react_agent
     prompt = PromptTemplate.from_template(
@@ -47,6 +49,8 @@ Thought: {agent_scratchpad}"""  # noqa: E501
 
     # Configura a memória para armazenar o histórico da conversa
     memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
+    llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
 
     agent = create_react_agent(llm, tools, prompt)
 
