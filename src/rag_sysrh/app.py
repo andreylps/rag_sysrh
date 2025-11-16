@@ -1,5 +1,6 @@
 import logging
 import os
+from io import StringIO
 
 import altair as alt
 import pandas as pd
@@ -9,6 +10,9 @@ from langchain_neo4j import Neo4jGraph
 from langchain_openai import ChatOpenAI
 
 from rag_sysrh.agent_executor import build_agent
+from rag_sysrh.agente_documentacao import AgenteDocumentacao
+from rag_sysrh.agente_faturamento import AgenteFaturamento
+from rag_sysrh.agente_qualidade import AgenteQualidade
 from rag_sysrh.analista_workflow import AnalistaWorkflow
 from rag_sysrh.main import get_tools
 
@@ -17,6 +21,36 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+# --- FUNÇÕES DE CACHE PARA PERFORMANCE ---
+
+
+@st.cache_resource
+def load_tools():  # noqa: ANN201
+    """Carrega as ferramentas do agente e as armazena em cache."""
+    return get_tools()
+
+
+@st.cache_resource
+def load_analista_workflow(_tools):  # noqa: ANN001, ANN201
+    """Carrega o workflow de análise e o armazena em cache."""
+    return AnalistaWorkflow(tools=_tools)
+
+
+@st.cache_resource
+def load_agente_documentacao():  # noqa: ANN201
+    """Carrega o agente de documentação e o armazena em cache."""
+    return AgenteDocumentacao()
+
+
+@st.cache_resource
+def get_logger_stream():  # noqa: ANN201
+    """Cria um stream de log para capturar a saída dos agentes."""
+    # Usamos um objeto StringIO para capturar os logs em memória
+    return StringIO()
+
+
+# --- INTERFACES DE RENDERIZAÇÃO ---
+
 
 def render_chat_interface() -> None:
     """Renderiza a interface do chat conversacional."""
@@ -24,10 +58,9 @@ def render_chat_interface() -> None:
     st.write(
         "Faça perguntas sobre manuais, regras de negócio, solicitações ou clientes."
     )
-
+    tools = load_tools()
     # Inicializa o agente e o histórico no estado da sessão
     if "agent_executor" not in st.session_state:
-        tools = get_tools()
         st.session_state.agent_executor = build_agent(tools)
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
@@ -66,11 +99,8 @@ def render_analysis_interface() -> None:
     st.write(
         "Forneça o texto de uma solicitação para receber uma análise completa, incluindo diagnóstico, solução e estimativa."  # noqa: E501
     )
-
-    if "analista_workflow" not in st.session_state:
-        # Passa as ferramentas já carregadas para o workflow
-        tools = get_tools()
-        st.session_state.analista_workflow = AnalistaWorkflow(tools)
+    tools = load_tools()
+    workflow = load_analista_workflow(tools)
 
     solicitacao_texto = st.text_area("Cole o texto da solicitação aqui:", height=150)
 
@@ -82,7 +112,6 @@ def render_analysis_interface() -> None:
                 "Executando workflow de análise... Isso pode levar um minuto."
             ):
                 try:
-                    workflow = st.session_state.analista_workflow
                     relatorio = workflow.run(solicitacao_texto)
 
                     st.markdown("---")
@@ -162,7 +191,9 @@ def render_dashboard_interface() -> None:
                     )
                     .interactive()
                 )
-                st.altair_chart(chart_status, use_container_width=True)
+                st.altair_chart(
+                    chart_status, use_container_width=True
+                )  # Mantido conforme doc do altair, mas ciente do warning
 
     with col2:
         st.markdown("#### Carga por Responsável")
@@ -186,7 +217,9 @@ def render_dashboard_interface() -> None:
                     )
                     .interactive()
                 )
-                st.altair_chart(chart_responsavel, use_container_width=True)
+                st.altair_chart(
+                    chart_responsavel, use_container_width=True
+                )  # Mantido conforme doc do altair, mas ciente do warning
 
     # --- AGENTE ANALISTA DE BI ---
     st.markdown("---")
@@ -208,6 +241,120 @@ def render_dashboard_interface() -> None:
             st.info(analise)
 
 
+def render_proactive_agents_interface() -> None:
+    """Renderiza a interface para execução manual dos agentes proativos."""
+    st.subheader("⚙️ Execução de Agentes Proativos")
+    st.write(
+        "Dispare manualmente os ciclos de análise dos agentes autônomos do sistema."
+    )
+
+    log_stream = get_logger_stream()
+    # Limpa o stream antes de cada execução para não acumular logs de execuções passadas
+    log_stream.truncate(0)
+    log_stream.seek(0)
+
+    # Configura o logger para escrever no stream
+    stream_handler = logging.StreamHandler(log_stream)
+    stream_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    )
+    # Adiciona o handler ao logger raiz
+    logging.getLogger().addHandler(stream_handler)
+
+    st.markdown("---")
+    st.markdown("### Agente de Qualidade")
+    st.write(
+        "Monitora o ciclo de vida das solicitações, validando a qualidade da descrição, conformidade de RCMs, prazos e entregas."  # noqa: E501
+    )
+    if st.button("Executar Ciclo do Agente de Qualidade"):
+        with st.spinner(
+            "O Agente de Qualidade está em execução... Isso pode levar alguns minutos."
+        ):
+            try:
+                agente_qualidade = AgenteQualidade()
+                resultado = agente_qualidade.executar_ciclo()
+                if resultado:
+                    st.info(resultado)
+                else:
+                    st.success("Ciclo do Agente de Qualidade concluído com sucesso!")
+                    st.code(log_stream.getvalue(), language="log")
+            except Exception as e:  # noqa: BLE001
+                st.error(
+                    f"Ocorreu um erro durante a execução do Agente de Qualidade: {e}"
+                )
+                st.code(log_stream.getvalue(), language="log")
+
+    st.markdown("---")
+    st.markdown("### Agente de Faturamento")
+    st.write(
+        "Analisa a rentabilidade das entregas concluídas, comparando o custo estimado com o custo realizado."  # noqa: E501
+    )
+    if st.button("Executar Ciclo do Agente de Faturamento"):
+        with st.spinner("O Agente de Faturamento está em execução..."):
+            try:
+                agente_faturamento = AgenteFaturamento()
+                resultado = agente_faturamento.executar_ciclo()
+                if resultado:
+                    st.info(resultado)
+                else:
+                    st.success("Ciclo do Agente de Faturamento concluído com sucesso!")
+                    st.code(log_stream.getvalue(), language="log")
+            except Exception as e:  # noqa: BLE001
+                st.error(
+                    f"Ocorreu um erro durante a execução do Agente de Faturamento: {e}"
+                )
+                st.code(log_stream.getvalue(), language="log")
+
+    st.markdown("---")
+    st.markdown("### Agente de Documentação")
+    st.write(
+        "Monitora RCMs concluídos e propõe atualizações para os manuais do sistema, mantendo a documentação sempre atualizada."  # noqa: E501
+    )
+    if st.button("Executar Ciclo do Agente de Documentação"):
+        with st.spinner("O Agente de Documentação está em execução..."):
+            try:
+                agente_documentacao = AgenteDocumentacao()
+                resultado = agente_documentacao.executar_ciclo_atualizacao()
+                if resultado:
+                    st.info(resultado)
+                else:
+                    st.success("Ciclo do Agente de Documentação concluído com sucesso!")
+                    st.code(log_stream.getvalue(), language="log")
+            except Exception as e:  # noqa: BLE001
+                st.error(
+                    f"Ocorreu um erro durante a execução do Agente de Documentação: {e}"
+                )
+                st.code(log_stream.getvalue(), language="log")
+
+    # Remove o handler para não interferir com outros loggers
+    logging.getLogger().removeHandler(stream_handler)
+
+
+def render_documentation_generator_interface() -> None:
+    """Renderiza a interface para o gerador de documentação."""
+    st.subheader("📚 Gerador de Documentação")
+    st.write(
+        "Solicite um manual sobre qualquer funcionalidade do sistema. O agente irá compilar as informações e apresentá-las em um formato organizado."  # noqa: E501
+    )
+
+    agente_doc = load_agente_documentacao()
+
+    topico = st.text_input(
+        "Sobre qual tópico você gostaria de gerar um manual?",
+        placeholder="Ex: Férias, Consignação, Horas Extras",
+    )
+
+    if st.button("Gerar Manual"):
+        if not topico:
+            st.warning("Por favor, insira um tópico.")
+        else:
+            with st.spinner(
+                f"O Agente de Documentação está compilando o manual sobre '{topico}'..."
+            ):
+                manual_markdown = agente_doc.gerar_manual_por_topico(topico)
+                st.markdown(manual_markdown)
+
+
 def main() -> None:
     """Função principal da aplicação Streamlit."""
     load_dotenv()
@@ -217,7 +364,13 @@ def main() -> None:
     st.sidebar.title("Modos de Operação")
     modo = st.sidebar.radio(
         "Escolha a ferramenta:",
-        ("Consulta Conversacional", "Análise de Solicitação", "Dashboard de BI"),
+        (
+            "Consulta Conversacional",
+            "Análise de Solicitação",
+            "Dashboard de BI",
+            "Agentes Proativos",
+            "Gerador de Documentação",
+        ),
     )
 
     if modo == "Consulta Conversacional":
@@ -226,6 +379,10 @@ def main() -> None:
         render_analysis_interface()
     elif modo == "Dashboard de BI":
         render_dashboard_interface()
+    elif modo == "Agentes Proativos":
+        render_proactive_agents_interface()
+    elif modo == "Gerador de Documentação":
+        render_documentation_generator_interface()
 
 
 if __name__ == "__main__":

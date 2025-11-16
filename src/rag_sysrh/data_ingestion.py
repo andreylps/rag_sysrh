@@ -2,6 +2,7 @@ import logging
 import os
 from pathlib import Path
 
+import ftfy
 import pandas as pd
 from dotenv import load_dotenv
 from langchain_community.document_loaders import (
@@ -112,6 +113,36 @@ class DataIngestion:
 
         return documents
 
+    def _load_and_ingest_cost_data(self) -> None:
+        """Carrega dados de custo de um CSV e cria nós :Custo."""
+        cost_data_path = (
+            Path(__file__).resolve().parent.parent.parent / "data" / "custos.csv"
+        )
+        if not cost_data_path.exists():
+            logging.warning(  # noqa: LOG015
+                "Arquivo de dados de custo não encontrado em %s. Pulando esta etapa.",
+                cost_data_path,
+            )
+            return
+
+        logging.info("Ingerindo dados de custo de %s...", cost_data_path)  # noqa: LOG015
+
+        try:
+            df = pd.read_csv(cost_data_path, sep=";", encoding="latin-1")
+            records = df.to_dict("records")
+
+            ingest_query = """
+            UNWIND $records AS record
+            MERGE (c:Custo {tipo: record.tipo_custo, chave: record.chave})
+            ON CREATE SET c.valor = toFloat(record.valor)
+            ON MATCH SET c.valor = toFloat(record.valor)
+            """
+            self.graph.query(ingest_query, params={"records": records})
+            logging.info("Ingestão de dados de custo concluída.")  # noqa: LOG015
+        except Exception as e:
+            logging.exception("Falha ao ingerir dados de custo: %s", e)  # noqa: LOG015, TRY401
+            raise
+
     def _load_and_ingest_structured_data(self) -> None:
         """Carrega dados estruturados de um CSV e cria nós e relacionamentos."""
         structured_data_abs_path = (
@@ -144,13 +175,28 @@ class DataIngestion:
                 "responsavel",
                 "tipo_solicitacao",
                 "iteration_path",
-                "description",
+                "description",  # Mapeia diretamente a coluna correta
                 "created_date",
                 "effort",
             ]
-            # Extrai o nome do cliente da coluna 'work_item_type'
-            # Ex: "SOLICITACAO ALESC" -> "ALESC"
             df["cliente"] = df["work_item_type"].str.replace("SOLICITACAO ", "")
+
+            # Limpa caracteres corrompidos em ambas as colunas
+            df["title"] = df["title"].apply(
+                lambda x: ftfy.fix_text(str(x)) if pd.notna(x) else x
+            )
+            df["description"] = df["description"].apply(
+                lambda x: ftfy.fix_text(str(x)) if pd.notna(x) else x
+            )
+
+            # 1. Preserva a descrição original (já limpa) em uma nova coluna 'texto_completo'  # noqa: E501
+            df["texto_completo"] = df["description"]
+            # 2. Sobrescreve a coluna 'description' do DataFrame com o título (já limpo)
+            df["description"] = df["title"]
+
+            df["texto_completo"] = df["texto_completo"].apply(
+                lambda x: ftfy.fix_text(str(x)) if pd.notna(x) else x
+            )
 
             # Remove linhas onde o 'id' da solicitação é nulo para evitar erros no MERGE
             df = df.dropna(subset=["id", "responsavel"])
@@ -162,8 +208,9 @@ class DataIngestion:
             ingest_query = """
             UNWIND $records AS record
             // Cria ou atualiza a Solicitação
-            MERGE (s:Solicitacao {id: toFloat(record.id)})
-            ON CREATE SET s.title = record.title, s.status = record.status, s.description = record.description
+            MERGE (s:Solicitacao {id: toFloat(record.id)}) // Usa o ID para encontrar o nó
+            // Define ou atualiza as propriedades, garantindo o nome correto 'description'
+            SET s.title = record.title, s.status = record.status, s.description = record.description, s.texto_completo = record.texto_completo, s.tipo_solicitacao = record.tipo_solicitacao, s.effort = toFloat(record.effort)
             // Cria ou atualiza o Cliente
             MERGE (c:Cliente {nome: record.cliente})
             // Cria ou atualiza o Responsável
@@ -188,6 +235,9 @@ class DataIngestion:
 
         # 1. Ingestão de dados estruturados (Solicitações, Clientes, etc.)
         self._load_and_ingest_structured_data()
+
+        # 2. Ingestão de dados de custo
+        self._load_and_ingest_cost_data()
 
         # 2. Ingestão de documentos não estruturados (Manuais)
         logging.info("Iniciando o carregamento dos documentos não estruturados...")  # noqa: LOG015

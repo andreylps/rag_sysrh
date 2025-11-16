@@ -73,8 +73,8 @@ class WorkflowState(TypedDict):
 
     solicitacao_original: str
     classificacao: str | None
-    dados_historico: list[str] | None
-    dados_manuais: list[str] | None
+    dados_historico: str | list | dict | None
+    dados_manuais: str | list | dict | None
     dados_rcm_especifico: str | None
     diagnostico: str | None
     relatorio_final: AnaliseRelatorio | None
@@ -150,7 +150,7 @@ class AnalistaWorkflow:
         )
         factual_tool = self.tools_by_name["Factual_Question_Answering"]
         resultado_historico = factual_tool.invoke({"input": query})
-        return {"dados_historico": [resultado_historico]}
+        return {"dados_historico": resultado_historico}
 
     def consultar_manuais(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 3: Consultando manuais e regras de negócio...")  # noqa: LOG015
@@ -159,7 +159,7 @@ class AnalistaWorkflow:
         )
         semantic_tool = self.tools_by_name["Semantic_Question_Answering"]
         resultado_manuais = semantic_tool.invoke({"input": query})
-        return {"dados_manuais": [resultado_manuais]}
+        return {"dados_manuais": resultado_manuais}
 
     def gerar_diagnostico(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 4: Gerando diagnóstico...")  # noqa: LOG015
@@ -182,17 +182,17 @@ class AnalistaWorkflow:
                 - **Análise do Problema:** Descreva o comportamento inesperado ou a dúvida do usuário.
                 - **Causa Raiz:** Identifique a possível causa do erro (ex: dados inconsistentes, falha em regra de negócio) ou aponte o procedimento correto com base nos manuais.
 
-            **Diagnóstico Técnico Detalhado:**"""
+            **Diagnóstico Técnico Detalhado:**"""  # noqa: E501
         )
         chain = prompt | self.llm
         diagnostico_str = chain.invoke(
             {
                 "solicitacao": state["solicitacao_original"],
                 "classificacao": state["classificacao"],
-                "historico": state["dados_historico"],
+                "historico": str(state.get("dados_historico", "")),
                 "rcm_especifico": state["dados_rcm_especifico"]
                 or "Nenhum RCM específico mencionado.",
-                "manuais": state["dados_manuais"],
+                "manuais": str(state.get("dados_manuais", "")),
             }
         ).content
         return {"diagnostico": diagnostico_str}

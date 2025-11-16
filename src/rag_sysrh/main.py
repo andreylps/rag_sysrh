@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 
 from dotenv import load_dotenv
 from langchain_community.vectorstores import Neo4jVector
@@ -34,7 +35,7 @@ LLM_MODEL = "gpt-4-turbo"
 LLM_TEMPERATURE = 0
 
 
-def get_tools() -> list[Tool]:
+def get_tools() -> list[Tool]:  # noqa: C901, PLR0915
     """
     Cria e retorna a lista de ferramentas (agentes especialistas) para o orquestrador.
     """
@@ -76,7 +77,7 @@ def get_tools() -> list[Tool]:
     retriever = vector_index.as_retriever(search_kwargs={"k": 3})
     # Cadeia LCEL para busca semântica
     semantic_qa_chain = (
-        {"context": retriever, "input": RunnablePassthrough()}
+        {"context": retriever, "input": RunnablePassthrough()}  # type: ignore  # noqa: PGH003
         | qa_prompt
         | llm
         | StrOutputParser()
@@ -84,7 +85,11 @@ def get_tools() -> list[Tool]:
 
     def run_semantic_chain(question: str) -> str:
         """Executa a cadeia semântica e retorna apenas a resposta."""
-        return semantic_qa_chain.invoke(question)
+        try:
+            return semantic_qa_chain.invoke(question)  # type: ignore  # noqa: PGH003
+        except Exception as e:
+            logging.exception("Falha na execução da cadeia semântica: %s", e)  # noqa: LOG015, TRY401
+            return "Desculpe, ocorreu um erro ao buscar a informação nos manuais."
 
     semantic_tool = Tool(
         name="Semantic_Question_Answering",
@@ -99,9 +104,9 @@ def get_tools() -> list[Tool]:
         """Você é um expert em Neo4j. Sua tarefa é gerar uma consulta Cypher a partir de uma pergunta do usuário, usando o schema do grafo.
 Instruções importantes para a geração de Cypher:
 1. Para perguntas sobre 'procedimentos', 'regras' ou 'como fazer', busque no nó `:Manual` usando `CONTAINS` na propriedade `texto`. Exemplo para 'férias': `MATCH (c:Chunk)-[:PARTE_DE]->(m:Manual) WHERE c.texto CONTAINS 'férias' RETURN c.texto`.
-2. Quando uma pergunta pedir para listar ou identificar uma 'solicitação', sempre retorne a propriedade `Title` do nó `Solicitacao`, que contém o número do chamado (ex: '3225/2025'). Exemplo para 'alesc': `MATCH (s:Solicitacao)-[:ASSOCIADA_A]->(c:Cliente) WHERE toLower(c.nome) = 'alesc' RETURN s.Title`.
-3. Para buscar por número de processo como '3225/2025', use `STARTS WITH` na propriedade `Title` do nó `Solicitacao`. Exemplo: `MATCH (r:RCM)-[:ORIGINADO_DE]->(s:Solicitacao) WHERE s.Title STARTS WITH '3225/2025' RETURN r.texto_completo`.
-4. Para buscar por ID de solicitação (ex: 99797), filtre a propriedade `id` do nó `Solicitacao` com `toFloat()`. Exemplo: `MATCH (s:Solicitacao) WHERE toFloat(s.id) = 99797.0 RETURN s.descricao`.
+2. Quando uma pergunta pedir para listar ou identificar uma 'solicitação', sempre retorne a propriedade `title` do nó `Solicitacao`, que contém o número do chamado (ex: '3225/2025'). Exemplo para 'alesc': `MATCH (s:Solicitacao)-[:ASSOCIADA_A]->(c:Cliente) WHERE toLower(c.nome) = 'alesc' RETURN s.title`.
+3. Se a pergunta usar um número de chamado, como '20511' ou '20511/2024', ele sempre se refere à propriedade `title`. Use o operador `STARTS WITH` para a busca. Para retornar a descrição completa, use a propriedade `texto_completo`. Exemplo para "descrição do chamado 20511": `MATCH (s:Solicitacao) WHERE s.title STARTS WITH '20511' RETURN s.title, s.status, s.texto_completo`.
+4. A propriedade `id` é um identificador interno do sistema. Use-a para busca somente se a pergunta mencionar explicitamente "ID da solicitação". Exemplo para "ID da solicitação 80679": `MATCH (s:Solicitacao) WHERE toFloat(s.id) = 80679.0 RETURN s.description`.
 5. Para buscar por status (ex: 'Aberta', 'RECUSADO'), use `toLower()` na propriedade `status` do nó `Solicitacao`. Exemplo: `MATCH (s:Solicitacao) WHERE toLower(s.status) = 'recusado' RETURN count(s)`.
 6. Para buscar por código de manual (ex: 'UCS0083'), filtre a propriedade `codigo_ucs` no nó `:Manual`. Exemplo: `MATCH (m:Manual) WHERE m.codigo_ucs = 'UCS0083' RETURN m.texto_completo`.
 7. Para buscar por 'Regra de Negócio' ou 'RN' (ex: 'RN001'), combine buscas com `AND`. Exemplo: `MATCH (m:Manual) WHERE m.texto_completo CONTAINS 'RN001' AND m.texto_completo CONTAINS 'Proposta de Consignação' RETURN m.texto_completo`.
@@ -123,10 +128,21 @@ Consulta Cypher:"""  # noqa: E501
 
     def run_qa_chain(question: str) -> str:
         try:
-            generated_cypher = cypher_chain.invoke(question)
-            logging.info(f"Cypher Gerado: {generated_cypher}")  # noqa: G004, LOG015
+            generated_cypher_raw = cypher_chain.invoke(question)
+            logging.info(f"Cypher Gerado: {generated_cypher_raw}")  # noqa: G004, LOG015
+
+            # Usa regex para extrair de forma robusta a query de dentro do bloco de markdown  # noqa: E501
+            match = re.search(r"```cypher\n(.*?)\n```", generated_cypher_raw, re.DOTALL)
+            if match:
+                generated_cypher = match.group(1).strip()
+            else:
+                # Se o LLM não retornar o bloco de markdown, usa a resposta como está
+                generated_cypher = generated_cypher_raw.strip()
+
             result = graph.query(generated_cypher)
-            return json.dumps(result)
+            if not result:
+                return "Nenhum resultado encontrado para esta consulta."
+            return json.dumps(result, ensure_ascii=False)
         except Exception as e:
             logging.exception("Falha na execução da consulta Cypher: %s", e)  # noqa: LOG015, TRY401
             return "Desculpe, ocorreu um erro ao buscar a informação no banco de dados."
@@ -139,4 +155,56 @@ Consulta Cypher:"""  # noqa: E501
     Exemplos de entrada: 'Qual o ID da solicitação 3225/2025?', 'Liste as 5 últimas solicitações do cliente Alesc', 'Quantas RCMs existem para o cliente UDESC?'""",  # noqa: E501
     )
 
-    return [semantic_tool, factual_tool]
+    # --- FERRAMENTA 3: AGENTE DE FATURAMENTO ---
+    billing_cypher_prompt = ChatPromptTemplate.from_template(
+        """Você é um expert em Neo4j e finanças. Sua tarefa é gerar uma consulta Cypher para calcular custos de solicitações.
+
+Instruções:
+1.  **Diferencie o tipo de solicitação:** O faturamento de chamados 'Evolutivo' ou 'Melhoria' é baseado em Pontos de Função (`s.effort`). O faturamento dos demais tipos ('Corretivo', 'Operacao', etc.) é baseado em horas (`s.horas_realizadas`).
+2.  **Custo por Ponto de Função:** Para chamados evolutivos, multiplique `s.effort` pelo valor do nó `:Custo {tipo: 'ponto_funcao'}`.
+3.  **Custo por Hora:** Para os demais chamados, multiplique `s.horas_realizadas` pelo valor do nó `:Custo {tipo: 'hora_desenvolvimento'}`.
+4.  **Exemplo para 'custo do chamado evolutivo 123'**: `MATCH (s:Solicitacao) WHERE s.id = 123 MATCH (c:Custo {tipo:'ponto_funcao'}) RETURN s.effort * c.valor AS custo_total`.
+5.  **Exemplo para 'custo do chamado corretivo 456'**: `MATCH (s:Solicitacao) WHERE s.id = 456 MATCH (c:Custo {tipo:'hora_desenvolvimento'}) RETURN s.horas_realizadas * c.valor AS custo_total`.
+6.  Se a pergunta especificar um cliente, filtre as solicitações por esse cliente antes de somar os custos.
+Schema:
+{schema}
+
+Pergunta: {input}
+Consulta Cypher:"""  # noqa: E501
+    )
+
+    billing_cypher_chain = (
+        {"schema": lambda _: graph.get_schema, "input": RunnablePassthrough()}
+        | billing_cypher_prompt
+        | llm
+        | StrOutputParser()
+    )
+
+    def run_billing_chain(question: str) -> str:
+        """Executa a cadeia de faturamento e retorna o resultado."""
+        generated_cypher_raw = billing_cypher_chain.invoke(question)
+        logging.info(f"Cypher de Faturamento Gerado: {generated_cypher_raw}")  # noqa: G004, LOG015
+        try:
+            # Usa regex para extrair de forma robusta a query de dentro do bloco de markdown  # noqa: E501
+            match = re.search(r"```cypher\n(.*?)\n```", generated_cypher_raw, re.DOTALL)
+            if match:
+                generated_cypher = match.group(1).strip()
+            else:
+                generated_cypher = generated_cypher_raw.strip()
+
+            result = graph.query(generated_cypher)
+            if not result:
+                return "Nenhum resultado encontrado para esta consulta."
+            return json.dumps(result, ensure_ascii=False)
+        except Exception as e:
+            logging.exception("Falha na execução da consulta de faturamento: %s", e)  # noqa: LOG015, TRY401
+            return "Erro ao calcular o faturamento."
+
+    billing_tool = Tool(
+        name="Billing_Calculator",
+        func=run_billing_chain,
+        description="""Útil para responder perguntas sobre custos, faturamento ou valor de solicitações e projetos.
+    Use esta ferramenta para perguntas como 'Qual o custo do chamado X?', 'Qual o faturamento do cliente Y?'.""",  # noqa: E501
+    )
+
+    return [semantic_tool, factual_tool, billing_tool]

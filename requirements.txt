@@ -1,0 +1,23 @@
+# Core application framework
+streamlit
+fastapi
+
+# LangChain components
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langchain-neo4j
+langchain_classic
+
+# Data handling and analysis
+pandas
+altair
+ftfy
+python-dateutil
+
+# Document loaders & Environment
+pypdf
+docx2txt
+unstructured[xlsx]
+python-dotenv
