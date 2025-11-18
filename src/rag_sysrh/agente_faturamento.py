@@ -1,12 +1,10 @@
 import logging
-import os
-from typing import cast
+from typing import Any, Dict, List, Optional
 
-from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_neo4j import Neo4jGraph
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
+
+from rag_sysrh.base_agent import BaseAgent
 
 # Configura o logging
 logging.basicConfig(
@@ -52,21 +50,89 @@ class PrevisaoFinanceira(BaseModel):
     )
 
 
-class AgenteFaturamento:
+class FaturamentoMensal(BaseModel):
+    """Modelo para um ponto de dado de faturamento mensal, realizado ou previsto."""
+
+    mes: str = Field(description="Mês e ano da análise (formato YYYY-MM).")
+    valor: float = Field(description="Valor total faturado ou previsto para o mês.")
+    tipo: str = Field(description="Tipo de dado: 'Realizado' ou 'Previsto'.")
+
+
+class RentabilidadeEntrega(BaseModel):
+    """Modelo para os dados de rentabilidade de uma única entrega."""
+
+    rcm_id: str = Field(description="ID da RCM analisada.")
+    custo_estimado: float = Field(description="Custo que foi estimado para a entrega.")
+    custo_realizado: float = Field(description="Custo real da entrega.")
+
+
+class RelatorioFaturamento(BaseModel):
+    """
+    Modelo para a saída completa do relatório de faturamento, contendo
+    dados para gráficos e a análise textual do LLM.
+    """
+
+    dados_predicao_grafico: List[FaturamentoMensal] = Field(
+        description="Lista de dados mensais para a geração do gráfico comparativo."
+    )
+    dados_rentabilidade_grafico: List[RentabilidadeEntrega] = Field(
+        description="Lista de dados de rentabilidade (custo estimado vs. realizado) para o gráfico."
+    )
+    insights_historico: str = Field(
+        description="Análise e insights sobre o desempenho dos últimos 3 meses."
+    )
+    analise_preditiva: str = Field(
+        description="Análise preditiva para os próximos 3 meses, com justificativas."
+    )
+
+
+class AgenteFaturamento(BaseAgent):
     """
     Agente autônomo para analisar a rentabilidade das entregas.
     """
 
-    def __init__(self) -> None:
-        load_dotenv()
-        self.llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
-        self.graph = Neo4jGraph(
-            url=os.getenv("NEO4J_URI"),
-            username=os.getenv("NEO4J_USERNAME"),
-            password=os.getenv("NEO4J_PASSWORD"),
-        )
+    def executar_ciclo_rentabilidade(self) -> None:
+        """
+        Executa um ciclo que busca RCMs concluídas, analisa sua rentabilidade
+        e registra os resultados no grafo.
+        """
+        logging.info("Iniciando ciclo de análise de rentabilidade...")
 
-    def _buscar_entregas_para_analise(self) -> list[dict]:
+        custos = self._buscar_custos_operacionais()
+        if not custos:
+            logging.error(
+                "Não foi possível ler os custos operacionais. Abortando ciclo de rentabilidade."
+            )
+            return
+
+        valor_pf = custos.get("ponto_funcao")
+        valor_hora = custos.get("hora_desenvolvimento")
+
+        if valor_pf is None or valor_hora is None:
+            logging.error(
+                "Os nós :Custo com tipo 'ponto_funcao' e 'hora_desenvolvimento' devem existir no grafo."
+            )
+            return
+
+        entregas = self._buscar_entregas_para_analise()
+        if not entregas:
+            logging.info("Nenhuma nova entrega para analisar a rentabilidade.")
+            return
+
+        logging.info(f"Encontradas {len(entregas)} entregas para análise.")
+        for entrega in entregas:
+            # O método _analisar_rentabilidade agora recebe os custos lidos do arquivo
+            analise = self._analisar_rentabilidade(
+                entrega["pontos_funcao"],
+                entrega["horas_realizadas"],
+                valor_pf,
+                valor_hora,
+            )
+            self._registrar_analise_rentabilidade(entrega["rcm_id"], analise)
+
+        logging.info("Ciclo de análise de rentabilidade concluído.")
+
+    def _buscar_entregas_para_analise(self, limit: int = 5) -> List[Dict[str, Any]]:
         """Busca RCMs concluídos que ainda não foram analisados quanto à rentabilidade."""  # noqa: E501
         logging.info("Buscando entregas concluídas para análise de rentabilidade...")  # noqa: LOG015
         # Esta query assume que o RCM tem as propriedades 'pontos_funcao' e 'horas_realizadas'  # noqa: E501
@@ -74,23 +140,26 @@ class AgenteFaturamento:
         # A análise de rentabilidade (PF vs Horas) aplica-se apenas a chamados evolutivos.  # noqa: E501
         query = """
         MATCH (rcm:RCM)-[:ORIGINADO_DE]->(s:Solicitacao)
-        WHERE toLower(rcm.status) IN ['concluído', 'entregue', 'aceite produção']
-          AND (toLower(s.tipo_solicitacao) = 'evolutivo' OR toLower(s.tipo_solicitacao) = 'melhoria')
-          AND rcm.pontos_funcao IS NOT NULL
-          AND rcm.horas_realizadas IS NOT NULL
-          AND NOT (rcm)-[:TEM_ANALISE_DE]->(:AnaliseRentabilidade)
-        // Busca os custos de PF e Hora
-        MATCH (custo_pf:Custo {tipo: 'ponto_funcao'}) // Custo de venda
-        MATCH (custo_hora:Custo {tipo: 'hora_desenvolvimento'})
+        // Garante que as propriedades necessárias existem e são válidas
+        WHERE rcm.status IS NOT NULL
+          AND s.tipo_solicitacao IS NOT NULL
+          AND s.effort IS NOT NULL
+          AND toLower(toString(rcm.status)) IN ['concluído', 'entregue', 'aceite produção'] AND NOT (rcm)-[:TEM_ANALISE_DE]->(:AnaliseRentabilidade)
+        // Interpreta a coluna 'effort' com base no tipo de solicitação
+        WITH rcm, s,
+            CASE
+                WHEN toLower(s.tipo_solicitacao) IN ['evolutivo', 'melhoria'] THEN s.effort
+                ELSE 0 // Se não for evolutivo, não há receita por PF
+            END AS pontos_funcao,
+            // A coluna effort sempre representa as horas para o custo
+            s.effort AS horas_realizadas
         RETURN
             rcm.id AS rcm_id,
-            rcm.pontos_funcao AS pontos_funcao,
-            rcm.horas_realizadas AS horas_realizadas,
-            custo_pf.valor AS valor_pf,
-            custo_hora.valor AS valor_hora
-        LIMIT 5
+            pontos_funcao,
+            horas_realizadas
+        LIMIT $limit
         """  # noqa: E501
-        return self.graph.query(query)
+        return self.graph.query(query, params={"limit": limit})
 
     def _analisar_rentabilidade(
         self,
@@ -119,16 +188,13 @@ class AgenteFaturamento:
             """  # noqa: E501
         )
         chain = prompt | structured_llm
-        return cast(
-            "AnaliseRentabilidade",
-            chain.invoke(
-                {
-                    "pontos_funcao": pontos_funcao,
-                    "horas_realizadas": horas_realizadas,
-                    "valor_pf": valor_pf,
-                    "valor_hora": valor_hora,
-                }
-            ),
+        return chain.invoke(
+            {
+                "pontos_funcao": pontos_funcao,
+                "horas_realizadas": horas_realizadas,
+                "valor_pf": valor_pf,
+                "valor_hora": valor_hora,
+            }
         )
 
     def _registrar_analise_rentabilidade(
@@ -141,23 +207,26 @@ class AgenteFaturamento:
         CREATE (ar:AnaliseRentabilidade $props)
         MERGE (rcm)-[:TEM_ANALISE_DE]->(ar)
         """
-        params = {"rcm_id": rcm_id, "props": analise.dict()}
+        params = {"rcm_id": rcm_id, "props": analise.model_dump()}
         self.graph.query(query, params=params)
 
-    def _buscar_backlog_evolutivo(self) -> list[dict]:
+    def _buscar_backlog_evolutivo(self) -> List[Dict[str, Any]]:
         """Busca o backlog de solicitações evolutivas com estimativa de esforço."""
         logging.info("Buscando backlog evolutivo para previsão financeira...")  # noqa: LOG015
         # A query assume que o tipo da solicitação está na propriedade 'tipo_solicitacao'  # noqa: E501
         query = """
         MATCH (s:Solicitacao)
-        WHERE (toLower(s.tipo_solicitacao) = 'evolutivo' OR toLower(s.tipo_solicitacao) = 'melhoria')
-          AND NOT toLower(s.status) IN ['concluído', 'entregue', 'cancelado', 'aceite produção']
+        // Garante que as propriedades necessárias existem
+        WHERE s.tipo_solicitacao IS NOT NULL AND s.status IS NOT NULL
+          AND toLower(toString(s.tipo_solicitacao)) IN ['evolutivo', 'melhoria']
+          AND NOT toLower(toString(s.status)) IN [ 
+            'concluído', 'entregue', 'cancelado', 'aceite produção'
+          ]
           AND s.effort IS NOT NULL AND s.effort > 0
         WITH collect({id: s.id, titulo: s.title, pontos_funcao: s.effort}) AS backlog
         // Se não houver backlog, a query para aqui e retorna uma lista vazia
         WHERE size(backlog) > 0
-        MATCH (custo_pf:Custo {tipo: 'ponto_funcao'})
-        RETURN backlog, custo_pf.valor AS valor_pf
+        RETURN backlog
         """  # noqa: E501
         return self.graph.query(query)
 
@@ -183,10 +252,7 @@ class AgenteFaturamento:
             """  # noqa: E501
         )
         chain = prompt | structured_llm
-        return cast(
-            "PrevisaoFinanceira",
-            chain.invoke({"backlog": backlog, "valor_pf": valor_pf}),
-        )
+        return chain.invoke({"backlog": str(backlog), "valor_pf": valor_pf})
 
     def _registrar_previsao_financeira(self, previsao: PrevisaoFinanceira) -> None:
         """Salva a previsão financeira gerada no grafo."""
@@ -195,50 +261,182 @@ class AgenteFaturamento:
         CREATE (p:PrevisaoFinanceira $props)
         SET p.data_geracao = datetime()
         """
-        self.graph.query(query, params={"props": previsao.dict()})
+        self.graph.query(query, params={"props": previsao.model_dump()})
 
-    def executar_ciclo(self) -> str | None:
-        """Executa um ciclo completo de análise de rentabilidade."""
-        # Verifica se os dados necessários para as análises existem
-        has_rcm_data = self.graph.query("MATCH (n:RCM) RETURN n LIMIT 1")
-        if not has_rcm_data:
-            return (
-                "💰 Dados insuficientes para o Agente de Faturamento! Para análises de rentabilidade e previsões financeiras, é necessário o arquivo de RCMs.\n"  # noqa: E501
-                "   - 📂 **Arquivo**: `rcms.csv`\n"
-                "     **Descrição**: Contém os dados das Requisições de Mudança (RCMs) para cálculo de custos e receitas.\n"  # noqa: E501
-                "     **Colunas essenciais**: `id`, `id_solicitacao`, `status`, `pontos_funcao` (para estimativa de receita) e `horas_realizadas` (para custo real)."  # noqa: E501
-            )
+    def _buscar_custos_operacionais(self) -> Optional[Dict[str, float]]:
+        """
+        Busca os valores de custo do grafo.
+        Retorna um dicionário mapeando o tipo de custo ao seu valor.
+        """
+        logging.info("Buscando custos operacionais do grafo...")
+        query = "MATCH (c:Custo) RETURN c.tipo AS tipo, c.valor AS valor"
+        results = self.graph.query(query)
+        if not results:
+            return None
+        return {item["tipo"]: item["valor"] for item in results}
 
-        # --- Ciclo 1: Análise de Rentabilidade de Entregas Concluídas ---
-        entregas = self._buscar_entregas_para_analise()
-        if not entregas:
-            logging.info("Nenhuma nova entrega para analisar a rentabilidade.")  # noqa: LOG015
-        else:
-            for entrega in entregas:
-                analise = self._analisar_rentabilidade(
-                    entrega["pontos_funcao"],
-                    entrega["horas_realizadas"],
-                    entrega["valor_pf"],
-                    entrega["valor_hora"],
+    def _buscar_dados_rentabilidade(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Busca os dados de custo estimado vs. realizado das últimas análises."""
+        logging.info("Buscando dados históricos de rentabilidade...")
+        query = """
+        MATCH (rcm:RCM)-[:TEM_ANALISE_DE]->(ar:AnaliseRentabilidade)
+        RETURN
+            rcm.id AS rcm_id,
+            ar.custo_estimado AS custo_estimado,
+            ar.custo_realizado AS custo_realizado
+        ORDER BY ar.data_geracao DESC
+        LIMIT $limit
+        """
+        return self.graph.query(query, params={"limit": limit})
+
+    def _buscar_metas_de_faturamento(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        Busca as metas de faturamento mensais do grafo.
+        Retorna uma lista de dicionários com 'mes' e 'meta'.
+        """
+        logging.info("Buscando metas de faturamento do grafo...")
+        query = "MATCH (m:MetaFaturamento) RETURN m.mes AS mes, m.meta AS meta"
+        return self.graph.query(query)
+
+    def _buscar_faturamento_historico(self, meses: int = 3) -> List[Dict[str, Any]]:
+        """Busca o faturamento realizado (custo estimado) dos últimos meses."""
+        logging.info(f"Buscando faturamento realizado dos últimos {meses} meses...")
+        query = """
+        MATCH (ar:AnaliseRentabilidade)
+        WHERE ar.data_geracao >= date() - duration({months: $meses})
+        WITH date.truncate('month', ar.data_geracao) AS mes, ar.custo_estimado AS faturamento
+        RETURN mes, sum(faturamento) AS valor_total
+        ORDER BY mes
+        """
+        return self.graph.query(query, params={"meses": meses})
+
+    def _buscar_previsao_futura(self, meses: int = 3) -> List[Dict[str, Any]]:
+        """Busca a previsão de faturamento dos próximos meses com base nas entregas previstas."""
+        logging.info(
+            f"Buscando previsão de faturamento para os próximos {meses} meses..."
+        )
+        query = """
+        MATCH (de:DetalhesEvolutiva)
+        WHERE de.data_prevista_entrega IS NOT NULL
+        WITH date(de.data_prevista_entrega) AS data_entrega, 
+             de.estimativa_pontos_funcao AS pf
+        WHERE data_entrega >= date() 
+          AND data_entrega < date() + duration({months: $meses})
+        MATCH (c:Custo {tipo: 'ponto_funcao'})
+        WITH date.truncate('month', data_entrega) AS mes, sum(pf * c.valor) AS valor_total
+        RETURN mes, valor_total
+        ORDER BY mes
+        """
+        return self.graph.query(query, params={"meses": meses})
+
+    def _gerar_analise_preditiva_com_llm(
+        self,
+        dados_predicao: List[FaturamentoMensal],
+        dados_rentabilidade: List[RentabilidadeEntrega],
+        metas: Optional[List[Dict[str, Any]]],
+    ) -> RelatorioFaturamento:
+        """Usa o LLM para gerar insights e análise preditiva sobre os dados de faturamento."""
+        structured_llm = self.llm.with_structured_output(RelatorioFaturamento)
+
+        prompt = ChatPromptTemplate.from_template(
+            """Você é um Analista Financeiro Sênior (CFO). Sua tarefa é analisar dados de faturamento e rentabilidade para fornecer um relatório estratégico completo.
+
+            **Dados para Gráfico de Predição (Realizado vs. Previsto):**
+            {dados_predicao_str}
+
+            **Dados para Gráfico de Rentabilidade (Estimado vs. Realizado):**
+            {dados_rentabilidade_str}
+
+            **Metas de Faturamento Mensal (se disponível):**
+            {metas_str}
+
+            **Instruções:**
+            1.  **Retorne os Dados para o Gráfico:** Preencha o campo `dados_grafico` com os dados compilados fornecidos, sem alterá-los.
+            2.  **Gere Insights do Histórico:** Analise os dados 'Realizado' dos últimos 3 meses. Identifique tendências (crescimento, queda, estabilidade), compare os meses e destaque qualquer anomalia. Escreva essa análise no campo `insights_historico`.
+            3.  **Gere Análise Preditiva:** Analise os dados 'Previsto' para os próximos 3 meses. Compare a previsão com o desempenho histórico. Aponte se a previsão é otimista ou pessimista e justifique com base nos dados. Se houver metas, avalie se as previsões estão alinhadas para atingi-las. Forneça recomendações estratégicas (ex: "O faturamento previsto para o próximo mês está abaixo da meta, sugerimos focar em fechar novos projetos do backlog evolutivo."). Escreva essa análise no campo `analise_preditiva`.
+            """  # noqa: E501
+        )
+
+        chain = prompt | structured_llm
+        return chain.invoke(
+            {
+                "dados_predicao_str": str(dados_predicao),
+                "dados_rentabilidade_str": str(dados_rentabilidade),
+                "metas_str": str(metas) if metas else "Nenhuma meta fornecida.",
+            }
+        )
+
+    def gerar_relatorio_completo(self) -> RelatorioFaturamento:
+        """
+        Orquestra a análise de faturamento, buscando dados históricos e futuros,
+        e gerando uma análise preditiva completa.
+        """
+        logging.info(
+            "Iniciando ciclo completo de geração de relatório de faturamento..."
+        )
+
+        # Passo 1: Executa o ciclo de rentabilidade para garantir que os dados históricos estejam atualizados.
+        logging.info("Etapa 1: Analisando rentabilidade de entregas recentes...")
+        self.executar_ciclo_rentabilidade()
+
+        # Passo 2: Buscar todos os dados necessários para o relatório.
+        logging.info("Etapa 2: Coletando dados para o relatório preditivo...")
+        faturamento_historico = self._buscar_faturamento_historico(meses=3)
+        rentabilidade_historica = self._buscar_dados_rentabilidade()
+        metas = self._buscar_metas_de_faturamento()
+        faturamento_previsto = self._buscar_previsao_futura(meses=3)
+
+        # 2. Formatar os dados para o modelo Pydantic
+        dados_compilados_predicao = []
+        for item in faturamento_historico:
+            dados_compilados_predicao.append(
+                FaturamentoMensal(
+                    mes=item["mes"].iso_format(),
+                    valor=item["valor_total"],
+                    tipo="Realizado",
                 )
-                self._registrar_analise_rentabilidade(entrega["rcm_id"], analise)
-            logging.info("Ciclo de análise de rentabilidade concluído.")  # noqa: LOG015
-
-        # --- Ciclo 2: Geração de Previsão Financeira do Backlog ---
-        dados_previsao = self._buscar_backlog_evolutivo()
-        if not dados_previsao:
-            logging.info("Nenhum backlog evolutivo encontrado para gerar previsão.")  # noqa: LOG015
-        else:
-            # A query retorna uma lista com um único dicionário
-            dados = dados_previsao[0]
-            previsao = self._gerar_previsao_financeira(
-                dados["backlog"], dados["valor_pf"]
             )
-            self._registrar_previsao_financeira(previsao)
-            logging.info("Ciclo de previsão financeira concluído.")  # noqa: LOG015
-        return None
+
+        for item in faturamento_previsto:
+            dados_compilados_predicao.append(
+                FaturamentoMensal(
+                    mes=item["mes"].iso_format(),
+                    valor=item["valor_total"],
+                    tipo="Previsto",
+                )
+            )
+
+        dados_compilados_rentabilidade = [
+            RentabilidadeEntrega(**item) for item in rentabilidade_historica
+        ]
+
+        if not dados_compilados_predicao and not dados_compilados_rentabilidade:
+            logging.warning("Nenhum dado de faturamento encontrado para análise.")
+            return RelatorioFaturamento(
+                dados_predicao_grafico=[],
+                dados_rentabilidade_grafico=[],
+                insights_historico="Nenhum dado histórico de faturamento encontrado para análise.",
+                analise_preditiva="Nenhuma previsão de faturamento pôde ser gerada devido à falta de dados futuros.",
+            )
+
+        # Passo 3: Gerar a análise textual com o LLM.
+        logging.info("Gerando insights e análise preditiva com o LLM...")
+        relatorio_completo = self._gerar_analise_preditiva_com_llm(
+            dados_predicao=dados_compilados_predicao,
+            dados_rentabilidade=dados_compilados_rentabilidade,
+            metas=metas,
+        )
+
+        logging.info("Análise preditiva de faturamento concluída com sucesso.")
+        # Garante que os dados para os gráficos sejam retornados corretamente
+        relatorio_completo.dados_predicao_grafico = dados_compilados_predicao
+        relatorio_completo.dados_rentabilidade_grafico = dados_compilados_rentabilidade
+
+        return relatorio_completo
 
 
 if __name__ == "__main__":
     agente = AgenteFaturamento()
-    agente.executar_ciclo()
+    # Agora, apenas um método é necessário para gerar o relatório completo
+    relatorio = agente.gerar_relatorio_completo()
+    print(relatorio.model_dump_json(indent=2))

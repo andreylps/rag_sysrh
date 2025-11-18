@@ -1,14 +1,14 @@
 import logging
 import os
-from typing import cast
+from typing import Any, Callable, Dict, List, Optional
 
-from dotenv import load_dotenv
 from langchain_community.vectorstores import Neo4jVector
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_neo4j import Neo4jGraph
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from pydantic import BaseModel, Field
+
+from rag_sysrh.base_agent import BaseAgent
 
 # Configura o logging
 logging.basicConfig(
@@ -29,45 +29,42 @@ class PropostaAtualizacao(BaseModel):
     )
 
 
-class AgenteDocumentacao:
+class AgenteDocumentacao(BaseAgent):
     """
     Agente autônomo para manter a documentação do sistema atualizada.
     """
 
+    # Constantes de configuração
+    _NEO4J_VECTOR_INDEX_NAME = "manual-chunks"
+
     def __init__(self) -> None:
-        load_dotenv()
-        self.llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
+        super().__init__()
         self.embeddings = OpenAIEmbeddings()
-        self.graph = Neo4jGraph(
-            url=os.getenv("NEO4J_URI"),
-            username=os.getenv("NEO4J_USERNAME"),
-            password=os.getenv("NEO4J_PASSWORD"),
-        )
         # Inicializa o retriever para busca vetorial nos manuais
         self.retriever = Neo4jVector.from_existing_index(
             embedding=self.embeddings,  # Correção: Usa o modelo de embeddings
             url=os.getenv("NEO4J_URI"),
             username=os.getenv("NEO4J_USERNAME"),
             password=os.getenv("NEO4J_PASSWORD"),
-            index_name="manual-chunks",
+            index_name=self._NEO4J_VECTOR_INDEX_NAME,
             text_node_property="texto",
         ).as_retriever(search_kwargs={"k": 10})
 
-    def _buscar_rcms_para_documentar(self) -> list[dict]:
+    def _buscar_rcms_para_documentar(self, limit: int = 5) -> list[dict]:
         """Busca RCMs concluídos que ainda não foram documentados."""
         logging.info("Buscando RCMs concluídos para documentar...")  # noqa: LOG015
         query = """
         MATCH (rcm:RCM)-[:ORIGINADO_DE]->(s:Solicitacao)
         WHERE toLower(rcm.status) IN ['concluído', 'entregue', 'aceite produção']
           AND (toLower(s.tipo_solicitacao) IN ['evolutivo', 'melhoria', 'corretivo'])
-          AND NOT (rcm)-[:GEROU_ATUALIZACAO]->(:AtualizacaoDocumento)
+          AND NOT EXISTS((rcm)-[:GEROU_ATUALIZACAO]->(:AtualizacaoDocumento))
         RETURN
             rcm.id AS rcm_id,
             rcm.description AS rcm_texto,
             s.title AS solicitacao_titulo
-        LIMIT 5
+        LIMIT $limit
         """
-        return self.graph.query(query)
+        return self.graph.query(query, params={"limit": limit})
 
     def _gerar_proposta_atualizacao(
         self, rcm_texto: str, texto_manual_original: str
@@ -90,9 +87,8 @@ class AgenteDocumentacao:
             """  # noqa: E501
         )
         chain = prompt | structured_llm
-        return cast(
-            "PropostaAtualizacao",
-            chain.invoke({"manual_original": texto_manual_original, "rcm": rcm_texto}),
+        return chain.invoke(
+            {"manual_original": texto_manual_original, "rcm": rcm_texto}
         )
 
     def _registrar_atualizacao(
@@ -123,30 +119,131 @@ class AgenteDocumentacao:
             },
         )
 
-    def executar_ciclo_atualizacao(self) -> str | None:
-        """Executa um ciclo completo de verificação e atualização da documentação."""
+    def _gerar_relatorio_documentacao(
+        self, propostas_geradas: List[Dict[str, Any]]
+    ) -> str:
+        """Gera um relatório em Markdown sobre as propostas de atualização criadas."""
+        logging.info("Gerando relatório do ciclo de documentação...")
+
+        propostas_str = "\n".join(
+            [
+                f"- Proposta para RCM '{item['rcm_id']}' impactando {item['num_chunks']} trecho(s) de manual."
+                for item in propostas_geradas
+            ]
+        )
+
+        prompt = ChatPromptTemplate.from_template(
+            """Você é um Gerente de Documentação Técnica. Sua tarefa é criar um relatório executivo em Markdown sobre as atividades do Agente de Documentação.
+
+            **Resumo das Propostas de Atualização Geradas:**
+            {propostas_str}
+
+            **Instruções para o Relatório:**
+            1.  **Título Principal:** Comece com `# Relatório do Ciclo de Documentação`.
+            2.  **Resumo Executivo:** Escreva um parágrafo resumindo quantas RCMs foram analisadas e quantas propostas de atualização de documentação foram geradas.
+            3.  **Detalhes das Propostas:**
+                - Use o subtítulo `## 📑 Propostas Geradas`.
+                - Liste cada proposta gerada, mencionando a RCM de origem e o número de documentos impactados.
+            4.  **Próximos Passos:** Adicione uma seção `### ➡️ Próximos Passos` sugerindo que as propostas devem ser revisadas e aprovadas pela equipe técnica.
+
+            Se nenhuma proposta foi gerada, apenas informe que nenhuma RCM nova necessitava de atualização na documentação.
+            """
+        )
+        chain = prompt | self.llm | StrOutputParser()
+        return chain.invoke({"propostas_str": propostas_str})
+
+    def executar_ciclo_atualizacao(
+        self,
+        similaridade_minima: float = 0.8,
+        status_callback: Optional[Callable[[str], None]] = None,
+    ) -> str | None:
+        """
+        Executa o ciclo proativo de verificação de RCMs concluídas para propor
+        atualizações na documentação.
+
+        Args:
+            similaridade_minima (float): Score mínimo de similaridade para considerar um chunk relevante.
+            status_callback: Uma função opcional para receber atualizações de status.
+        """
+        if status_callback:
+            status_callback("Iniciando ciclo de atualização...")
+        logging.info("Iniciando ciclo de atualização proativa da documentação.")
+
         # Verifica se os dados necessários para as análises existem
         has_rcm_data = self.graph.query("MATCH (n:RCM) RETURN n LIMIT 1")
         if not has_rcm_data:
             return (
                 "📄 Dados insuficientes para o Agente de Documentação! Para manter os manuais atualizados, o agente precisa acessar as RCMs implementadas.\n"  # noqa: E501
-                "   - 📂 **Arquivo**: `rcms.csv`\n"
+                "   - 📂 **Arquivo**: `rcms_01.csv`\n"
                 "     **Descrição**: Contém os dados das Requisições de Mudança (RCMs) concluídas.\n"  # noqa: E501
                 "     **Colunas essenciais**: `id`, `description` (com o detalhe da mudança), `status` e `id_solicitacao`."  # noqa: E501
             )
 
+        if status_callback:
+            status_callback("Buscando RCMs concluídas...")
         rcms_para_documentar = self._buscar_rcms_para_documentar()
         if not rcms_para_documentar:
-            logging.info("Nenhuma nova RCM para documentar.")  # noqa: LOG015
-            return None
+            logging.info("Nenhuma nova RCM concluída para análise de documentação.")
+            return "✅ Nenhuma RCM nova encontrada para documentar. A base de conhecimento está em dia!"
 
-        logging.info(f"Encontradas {len(rcms_para_documentar)} RCMs para documentar.")  # noqa: G004, LOG015
-        # Esta é uma implementação simplificada. A lógica de encontrar o chunk relevante
-        # seria mais complexa, envolvendo busca vetorial.
-        logging.warning(  # noqa: LOG015
-            "Funcionalidade de atualização de documentação em desenvolvimento."
-        )
-        return None
+        if status_callback:
+            status_callback(
+                f"Analisando {len(rcms_para_documentar)} RCMs para impacto na documentação..."
+            )
+        logging.info(f"Encontradas {len(rcms_para_documentar)} RCMs para análise.")
+        propostas_geradas = []
+        for rcm in rcms_para_documentar:
+            rcm_id = rcm["rcm_id"]
+            rcm_texto = rcm.get("rcm_texto")
+
+            if not rcm_texto:
+                logging.warning(f"RCM {rcm_id} não possui descrição. Pulando análise.")
+                continue
+
+            try:
+                # 1. Realizar busca vetorial por chunks similares
+                # O retriever já faz a geração do embedding e a busca
+                docs_relevantes = self.retriever.get_relevant_documents(
+                    rcm_texto, score_threshold=similaridade_minima
+                )
+
+                if not docs_relevantes:
+                    logging.info(
+                        f"Nenhum chunk de documentação relevante encontrado para a RCM {rcm_id}."
+                    )
+                    continue
+
+                logging.info(
+                    f"RCM {rcm_id} impacta {len(docs_relevantes)} chunk(s). Gerando propostas de atualização."
+                )
+
+                # 2. Para cada chunk relevante, gerar e registrar uma proposta
+                for doc in docs_relevantes:
+                    texto_manual_original = doc.page_content
+                    chunk_id = doc.metadata["id"]
+
+                    # Gera a nova versão do texto e o resumo da mudança
+                    proposta = self._gerar_proposta_atualizacao(
+                        rcm_texto, texto_manual_original
+                    )
+
+                    # Salva a proposta no grafo
+                    self._registrar_atualizacao(rcm_id, chunk_id, proposta)
+
+                propostas_geradas.append(
+                    {"rcm_id": rcm_id, "num_chunks": len(docs_relevantes)}
+                )
+
+            except Exception as e:
+                logging.error(f"Falha ao processar a RCM {rcm_id}: {e}")
+
+        if not propostas_geradas:
+            return "✅ Análise concluída. Nenhuma proposta de atualização de documentação foi necessária neste ciclo."
+
+        if status_callback:
+            status_callback("Compilando relatório final...")
+        logging.info("Ciclo de atualização proativa da documentação finalizado.")
+        return self._gerar_relatorio_documentacao(propostas_geradas)
 
     def gerar_manual_por_topico(self, topico: str) -> str:
         """

@@ -1,10 +1,12 @@
 import logging
+import os
 from typing import TypedDict
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import Tool
+from langchain_neo4j import Neo4jGraph
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel, Field
@@ -89,29 +91,12 @@ class AnalistaWorkflow:
     def __init__(self, tools: list[Tool]) -> None:
         self.llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
         self.tools_by_name = {tool.name: tool for tool in tools}
+        self.db_graph = Neo4jGraph(
+            url=os.getenv("NEO4J_URI"),
+            username=os.getenv("NEO4J_USERNAME"),
+            password=os.getenv("NEO4J_PASSWORD"),
+        )
         self.graph = self._build_graph()
-
-    def _build_graph(self):  # noqa: ANN202
-        workflow = StateGraph(WorkflowState)
-
-        # Adiciona os nós (passos) do workflow
-        workflow.add_node("classificar_solicitacao", self.classificar_solicitacao)
-        workflow.add_node("identificar_e_buscar_rcm", self.identificar_e_buscar_rcm)
-        workflow.add_node("buscar_no_historico", self.buscar_no_historico)
-        workflow.add_node("consultar_manuais", self.consultar_manuais)
-        workflow.add_node("gerar_diagnostico", self.gerar_diagnostico)
-        workflow.add_node("gerar_relatorio_final", self.gerar_relatorio_final)
-
-        # Define as arestas (fluxo)
-        workflow.set_entry_point("classificar_solicitacao")
-        workflow.add_edge("classificar_solicitacao", "identificar_e_buscar_rcm")
-        workflow.add_edge("identificar_e_buscar_rcm", "buscar_no_historico")
-        workflow.add_edge("buscar_no_historico", "consultar_manuais")
-        workflow.add_edge("consultar_manuais", "gerar_diagnostico")
-        workflow.add_edge("gerar_diagnostico", "gerar_relatorio_final")
-        workflow.add_edge("gerar_relatorio_final", END)
-
-        return workflow.compile()
 
     def classificar_solicitacao(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 1: Classificando a solicitação...")  # noqa: LOG015
@@ -253,6 +238,53 @@ class AnalistaWorkflow:
                 )
             }
 
+    def _registrar_detalhes_evolutiva(
+        self, solicitacao_id: str, detalhes: DetalhesEvolutiva
+    ) -> None:
+        """Salva os detalhes da análise evolutiva no grafo."""
+        logging.info(
+            f"Registrando detalhes evolutivos para a solicitação {solicitacao_id}..."
+        )
+        query = """
+        MATCH (s:Solicitacao {id: $solicitacao_id})
+        CREATE (de:DetalhesEvolutiva {
+            data_prevista_entrega: $data_prevista_entrega,
+            estimativa_pontos_funcao: $estimativa_pontos_funcao,
+            prazo_dias_uteis: $prazo_dias_uteis
+        })
+        MERGE (s)-[:TEM_DETALHES_EVOLUTIVA]->(de)
+        """
+        self.db_graph.query(
+            query,
+            params={
+                "solicitacao_id": solicitacao_id,
+                **detalhes.model_dump(),
+            },
+        )
+
+    def _build_graph(self) -> StateGraph:
+        """Constrói e compila o workflow do LangGraph."""
+        workflow = StateGraph(WorkflowState)
+
+        # Adiciona os nós (passos) do workflow
+        workflow.add_node("classificar_solicitacao", self.classificar_solicitacao)
+        workflow.add_node("identificar_e_buscar_rcm", self.identificar_e_buscar_rcm)
+        workflow.add_node("buscar_no_historico", self.buscar_no_historico)
+        workflow.add_node("consultar_manuais", self.consultar_manuais)
+        workflow.add_node("gerar_diagnostico", self.gerar_diagnostico)
+        workflow.add_node("gerar_relatorio_final", self.gerar_relatorio_final)
+
+        # Define as arestas (fluxo) do workflow
+        workflow.set_entry_point("classificar_solicitacao")
+        workflow.add_edge("classificar_solicitacao", "identificar_e_buscar_rcm")
+        workflow.add_edge("identificar_e_buscar_rcm", "buscar_no_historico")
+        workflow.add_edge("buscar_no_historico", "consultar_manuais")
+        workflow.add_edge("consultar_manuais", "gerar_diagnostico")
+        workflow.add_edge("gerar_diagnostico", "gerar_relatorio_final")
+        workflow.add_edge("gerar_relatorio_final", END)
+
+        return workflow.compile()
+
     def run(self, solicitacao: str) -> AnaliseRelatorio:
         """Executa o workflow completo para uma dada solicitação."""
         # Inicializa o estado com todas as chaves para satisfazer o type checker.
@@ -266,6 +298,16 @@ class AnalistaWorkflow:
             "relatorio_final": None,
         }
         final_state = self.graph.invoke(initial_state)
+        relatorio_final = final_state.get("relatorio_final")
+
+        # Se a análise gerou detalhes de uma demanda evolutiva, salva no grafo.
+        if relatorio_final and relatorio_final.detalhes_evolutiva:
+            # Extrai o ID da solicitação original para o relacionamento
+            solicitacao_id = solicitacao.split("-")[0].strip()
+            self._registrar_detalhes_evolutiva(
+                solicitacao_id, relatorio_final.detalhes_evolutiva
+            )
+
         return final_state["relatorio_final"]
 
 

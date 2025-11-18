@@ -1,11 +1,13 @@
 import logging
 import os
 from io import StringIO
+from typing import Any
 
 import altair as alt
 import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
+from langchain_core.tools import Tool
 from langchain_neo4j import Neo4jGraph
 from langchain_openai import ChatOpenAI
 
@@ -21,32 +23,79 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
+
 # --- FUNÇÕES DE CACHE PARA PERFORMANCE ---
-
-
 @st.cache_resource
-def load_tools():  # noqa: ANN201
+def load_tools() -> list[Tool]:
     """Carrega as ferramentas do agente e as armazena em cache."""
     return get_tools()
 
 
 @st.cache_resource
-def load_analista_workflow(_tools):  # noqa: ANN001, ANN201
+def load_analista_workflow(_tools: list[Tool]) -> AnalistaWorkflow:
     """Carrega o workflow de análise e o armazena em cache."""
     return AnalistaWorkflow(tools=_tools)
 
 
 @st.cache_resource
-def load_agente_documentacao():  # noqa: ANN201
+def load_agente_documentacao() -> AgenteDocumentacao:
     """Carrega o agente de documentação e o armazena em cache."""
     return AgenteDocumentacao()
 
 
+class StreamlitLogHandler(logging.Handler):
+    """
+    Um handler de log que escreve os registros em um container do Streamlit.
+    """
+
+    def __init__(self, container: Any, log_stream: StringIO) -> None:
+        super().__init__()
+        self.container = container
+        self.log_stream = log_stream
+
+    def emit(self, record: logging.LogRecord) -> None:
+        msg = self.format(record)
+        self.log_stream.write(msg + "\n")
+        self.container.code(self.log_stream.getvalue(), language="log")
+
+
 @st.cache_resource
-def get_logger_stream():  # noqa: ANN201
-    """Cria um stream de log para capturar a saída dos agentes."""
-    # Usamos um objeto StringIO para capturar os logs em memória
-    return StringIO()
+def carregar_dados_faturamento() -> None:
+    """
+    Lê os arquivos CSV de faturamento e os insere/atualiza no Neo4j.
+    Garante que os dados de custo e metas estejam no grafo.
+    """
+    logging.info("Verificando e carregando dados de faturamento no Neo4j...")
+    graph = Neo4jGraph(
+        url=os.getenv("NEO4J_URI"),
+        username=os.getenv("NEO4J_USERNAME"),
+        password=os.getenv("NEO4J_PASSWORD"),
+    )
+
+    # Carrega os custos
+    custos_path = "data/faturamento/custos.csv"
+    if os.path.exists(custos_path):
+        df_custos = pd.read_csv(custos_path)
+        for _, row in df_custos.iterrows():
+            graph.query(
+                """
+                MERGE (c:Custo {tipo: $tipo})
+                SET c.valor = $valor
+                """,
+                params={"tipo": row["tipo"], "valor": row["valor"]},
+            )
+        logging.info("Dados de custos carregados/atualizados no Neo4j.")
+
+    # Carrega as metas mensais
+    metas_path = "data/faturamento/metas_mensais.csv"
+    if os.path.exists(metas_path):
+        df_metas = pd.read_csv(metas_path)
+        for _, row in df_metas.iterrows():
+            graph.query(
+                "MERGE (m:MetaFaturamento {mes: $mes}) SET m.meta = $meta",
+                params={"mes": row["mes"], "meta": row["meta"]},
+            )
+        logging.info("Dados de metas de faturamento carregados/atualizados no Neo4j.")
 
 
 # --- INTERFACES DE RENDERIZAÇÃO ---
@@ -241,69 +290,119 @@ def render_dashboard_interface() -> None:
             st.info(analise)
 
 
-def render_proactive_agents_interface() -> None:
+def render_proactive_agents_interface() -> None:  # noqa: C901, PLR0912, PLR0915
     """Renderiza a interface para execução manual dos agentes proativos."""
     st.subheader("⚙️ Execução de Agentes Proativos")
     st.write(
         "Dispare manualmente os ciclos de análise dos agentes autônomos do sistema."
     )
 
-    log_stream = get_logger_stream()
-    # Limpa o stream antes de cada execução para não acumular logs de execuções passadas
-    log_stream.truncate(0)
-    log_stream.seek(0)
-
-    # Configura o logger para escrever no stream
-    stream_handler = logging.StreamHandler(log_stream)
-    stream_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-    )
-    # Adiciona o handler ao logger raiz
-    logging.getLogger().addHandler(stream_handler)
-
     st.markdown("---")
     st.markdown("### Agente de Qualidade")
     st.write(
         "Monitora o ciclo de vida das solicitações, validando a qualidade da descrição, conformidade de RCMs, prazos e entregas."  # noqa: E501
     )
+
     if st.button("Executar Ciclo do Agente de Qualidade"):
-        with st.spinner(
-            "O Agente de Qualidade está em execução... Isso pode levar alguns minutos."
-        ):
+        with st.status(
+            "🧠 O Agente de Qualidade está pensando...", expanded=True
+        ) as status:
             try:
                 agente_qualidade = AgenteQualidade()
-                resultado = agente_qualidade.executar_ciclo()
-                if resultado:
-                    st.info(resultado)
-                else:
-                    st.success("Ciclo do Agente de Qualidade concluído com sucesso!")
-                    st.code(log_stream.getvalue(), language="log")
+                # Executa o ciclo gerencial que retorna um relatório em Markdown
+                relatorio_markdown = agente_qualidade.executar_ciclo_gerencial(
+                    status_callback=lambda msg: status.update(label=f"🧠 {msg}")
+                )
+                st.markdown(relatorio_markdown)
             except Exception as e:  # noqa: BLE001
                 st.error(
                     f"Ocorreu um erro durante a execução do Agente de Qualidade: {e}"
                 )
-                st.code(log_stream.getvalue(), language="log")
 
     st.markdown("---")
     st.markdown("### Agente de Faturamento")
     st.write(
         "Analisa a rentabilidade das entregas concluídas, comparando o custo estimado com o custo realizado."  # noqa: E501
     )
-    if st.button("Executar Ciclo do Agente de Faturamento"):
-        with st.spinner("O Agente de Faturamento está em execução..."):
+
+    if st.button("Gerar Relatório de Faturamento"):
+        with st.status(
+            "🧠 O Agente de Faturamento está trabalhando...", expanded=True
+        ) as status:
             try:
                 agente_faturamento = AgenteFaturamento()
-                resultado = agente_faturamento.executar_ciclo()
-                if resultado:
-                    st.info(resultado)
+                status.update(label="Analisando rentabilidade e gerando previsão...")
+                relatorio = agente_faturamento.gerar_relatorio_completo()
+
+                if relatorio and (
+                    relatorio.dados_predicao_grafico
+                    or relatorio.dados_rentabilidade_grafico
+                ):
+                    # Gráfico 1: Predição de Faturamento
+                    status.update(label="Renderizando gráficos...")
+                    st.markdown("#### Gráfico Comparativo de Faturamento")
+                    df_predicao = pd.DataFrame(
+                        [d.model_dump() for d in relatorio.dados_predicao_grafico]
+                    )
+                    if not df_predicao.empty:
+                        df_predicao["mes"] = pd.to_datetime(
+                            df_predicao["mes"]
+                        ).dt.strftime("%Y-%m")
+                        chart = (
+                            alt.Chart(df_predicao)
+                            .mark_bar()
+                            .encode(
+                                x=alt.X(
+                                    "mes:N", title="Mês", sort=alt.SortField("mes")
+                                ),
+                                y=alt.Y("valor:Q", title="Valor (R$)"),
+                                color=alt.Color(
+                                    "tipo:N",
+                                    title="Tipo",
+                                    scale=alt.Scale(
+                                        domain=["Realizado", "Previsto"],
+                                        range=["#4c78a8", "#f58518"],
+                                    ),
+                                ),
+                                tooltip=["mes:N", "valor:Q"],
+                            )
+                        )
+                        st.altair_chart(chart, use_container_width=True)
+
+                    # Gráfico 2: Análise de Rentabilidade
+                    st.markdown("#### Análise de Rentabilidade por Entrega")
+                    df_rentabilidade = pd.DataFrame(
+                        [d.model_dump() for d in relatorio.dados_rentabilidade_grafico]
+                    )
+                    if not df_rentabilidade.empty:
+                        # Prepara os dados para o gráfico de barras agrupadas
+                        df_melted = df_rentabilidade.melt(
+                            id_vars=["rcm_id"],
+                            value_vars=["custo_estimado", "custo_realizado"],
+                            var_name="Tipo de Custo",
+                            value_name="Valor",
+                        )
+                        chart_rent = (
+                            alt.Chart(df_melted)
+                            .mark_bar()
+                            .encode(
+                                x=alt.X("rcm_id:N", title="ID da RCM"),
+                                y=alt.Y("Valor:Q", title="Custo (R$)"),
+                                color="Tipo de Custo:N",
+                                xOffset="Tipo de Custo:N",
+                                tooltip=["rcm_id", "Tipo de Custo", "Valor"],
+                            )
+                        )
+                        st.altair_chart(chart_rent, use_container_width=True)
+
+                    status.update(label="Gerando análise textual...")
+                    st.markdown("#### Análise e Insights")
+                    st.info(f"**Insights:**\n{relatorio.insights_historico}")
+                    st.success(f"**Previsão:**\n{relatorio.analise_preditiva}")
                 else:
-                    st.success("Ciclo do Agente de Faturamento concluído com sucesso!")
-                    st.code(log_stream.getvalue(), language="log")
-            except Exception as e:  # noqa: BLE001
-                st.error(
-                    f"Ocorreu um erro durante a execução do Agente de Faturamento: {e}"
-                )
-                st.code(log_stream.getvalue(), language="log")
+                    st.warning("Não foram encontrados dados suficientes.")
+            except Exception as e:
+                st.error(f"Erro ao gerar relatório de faturamento: {e}")
 
     st.markdown("---")
     st.markdown("### Agente de Documentação")
@@ -311,23 +410,19 @@ def render_proactive_agents_interface() -> None:
         "Monitora RCMs concluídos e propõe atualizações para os manuais do sistema, mantendo a documentação sempre atualizada."  # noqa: E501
     )
     if st.button("Executar Ciclo do Agente de Documentação"):
-        with st.spinner("O Agente de Documentação está em execução..."):
+        with st.status(
+            "🧠 O Agente de Documentação está pensando...", expanded=True
+        ) as status:
             try:
                 agente_documentacao = AgenteDocumentacao()
-                resultado = agente_documentacao.executar_ciclo_atualizacao()
-                if resultado:
-                    st.info(resultado)
-                else:
-                    st.success("Ciclo do Agente de Documentação concluído com sucesso!")
-                    st.code(log_stream.getvalue(), language="log")
+                relatorio = agente_documentacao.executar_ciclo_atualizacao(
+                    status_callback=lambda msg: status.update(label=f"🧠 {msg}")
+                )
+                st.markdown(relatorio)
             except Exception as e:  # noqa: BLE001
                 st.error(
                     f"Ocorreu um erro durante a execução do Agente de Documentação: {e}"
                 )
-                st.code(log_stream.getvalue(), language="log")
-
-    # Remove o handler para não interferir com outros loggers
-    logging.getLogger().removeHandler(stream_handler)
 
 
 def render_documentation_generator_interface() -> None:
@@ -358,6 +453,7 @@ def render_documentation_generator_interface() -> None:
 def main() -> None:
     """Função principal da aplicação Streamlit."""
     load_dotenv()
+    carregar_dados_faturamento()  # Garante que os dados de faturamento estão no banco
     st.set_page_config(page_title="Assistente SYSRH", layout="wide")
     st.title("🤖 Assistente de Conhecimento SYSRH")
 

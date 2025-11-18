@@ -30,6 +30,7 @@ class DataIngestion:
         self,
         data_directory: str,
         structured_data_path: str,
+        rcm_data_path: str,
         single_manual_path: str | None = None,
     ) -> None:
         """
@@ -38,6 +39,7 @@ class DataIngestion:
         Args:
             data_directory (str): O caminho para o diretório que contém os arquivos de dados.
             structured_data_path (str): O caminho para o arquivo CSV com dados estruturados.
+            rcm_data_path (str): O caminho para o arquivo CSV com metadados de RCMs.
             single_manual_path (str | None): O caminho para um único arquivo de manual a ser processado.
         """  # noqa: E501
         # Garante que o .env seja carregado a partir da raiz do projeto
@@ -51,6 +53,7 @@ class DataIngestion:
 
         self.data_directory = data_directory
         self.structured_data_path = structured_data_path
+        self.rcm_data_path = rcm_data_path
         self.single_manual_path = single_manual_path
         self.embeddings = OpenAIEmbeddings()
 
@@ -226,6 +229,149 @@ class DataIngestion:
             logging.exception("Falha ao ingerir dados estruturados: %s", e)  # noqa: LOG015, TRY401
             raise
 
+    def _load_and_ingest_rcm_data(self) -> None:
+        """Carrega metadados de RCMs, seus documentos .docx e cria nós e relacionamentos."""  # noqa: E501
+        rcm_data_abs_path = (
+            Path(__file__).resolve().parent.parent.parent / self.rcm_data_path
+        )
+        if not rcm_data_abs_path.exists():
+            logging.warning(  # noqa: LOG015
+                "Arquivo de metadados de RCM não encontrado em %s. Pulando esta etapa.",
+                rcm_data_abs_path,
+            )
+            return
+
+        logging.info("Ingerindo dados de RCMs de %s...", rcm_data_abs_path)  # noqa: LOG015
+        try:
+            df = pd.read_csv(rcm_data_abs_path, sep=";", encoding="latin-1", skiprows=1)
+            # Renomeia as colunas para um formato limpo e previsível
+            df.columns = [
+                "rcm_id_raw",
+                "work_item_type",  # Usado para extrair o cliente
+                "title",  # Contém o ID da RCM e a descrição
+                "status",
+                "responsavel",
+                "tipo_solicitacao",
+                "iteration_path",
+                "description",
+                "created_date",
+                "effort",  # Mapeado para pontos_funcao ou horas_reais
+                "data_prevista_entrega",
+                "data_conclusao_real",
+            ]
+            # Extrai apenas o ID da RCM (ex: "RCM-001") do título
+            df["rcm_id"] = df["title"].str.extract(r"(RCM-\d+)")
+            df["horas_reais"] = df["effort"]  # Mapeamento temporário
+
+            # Remove linhas onde o rcm_id não foi encontrado para evitar erros de NaN
+            df = df.dropna(subset=["rcm_id"])
+
+            rcm_records = df.to_dict("records")
+
+            for record in rcm_records:
+                # 1. Cria o nó RCM e o relaciona com a Solicitação
+                ingest_rcm_query = """
+                // Encontra a Solicitação pelo ID que está no título da RCM
+                // Ex: RCM title "43201;...;1451/2020 - CORRIGIR..."
+                //     Solicitacao title "1451/2020 - CORRIGIR..."
+                MATCH (s:Solicitacao) WHERE $rcm_id_raw CONTAINS s.title
+                MERGE (rcm:RCM {id: $rcm_id}) // Cria a RCM com seu ID único
+                SET rcm += {
+                    status: $status,
+                    horas_reais: toFloat($horas_reais),
+                    pontos_funcao: toFloat($effort),
+                    data_prevista_entrega: $data_prevista_entrega,
+                    data_conclusao_real: $data_conclusao_real,
+                    titulo: $title,
+                    tipo_solicitacao: $tipo_solicitacao
+                }
+                MERGE (rcm)-[:ORIGINADO_DE]->(s)
+                """
+                self.graph.query(ingest_rcm_query, params=record)
+
+                # 2. Procura e processa o documento .docx associado
+                rcm_id = record.get("rcm_id")
+                rcm_doc_path = (
+                    Path(__file__).resolve().parent.parent.parent
+                    / "data"
+                    / "rcms"
+                    / f"{rcm_id}.docx"
+                )
+
+                if rcm_doc_path.exists():
+                    logging.info("Processando documento: %s", rcm_doc_path)  # noqa: LOG015
+                    loader = Docx2txtLoader(str(rcm_doc_path))
+                    documents = loader.load()
+
+                    text_splitter = RecursiveCharacterTextSplitter(
+                        chunk_size=1000, chunk_overlap=200
+                    )
+                    chunks = text_splitter.split_documents(documents)
+
+                    for chunk in chunks:
+                        self.graph.query(
+                            """
+                            MATCH (rcm:RCM {id: $rcm_id})
+                            CREATE (c:Chunk {texto: $texto})
+                            MERGE (c)-[:PARTE_DE]->(rcm)
+                            """,
+                            params={"rcm_id": rcm_id, "texto": chunk.page_content},
+                        )
+            logging.info("Ingestão de dados de RCMs concluída.")  # noqa: LOG015
+        except Exception as e:
+            logging.exception("Falha ao ingerir dados de RCMs: %s", e)  # noqa: LOG015, TRY401
+            raise
+
+    def _load_and_ingest_test_cases(self) -> None:
+        """Carrega casos de teste de um CSV e cria nós e relacionamentos."""
+        test_cases_path = (
+            Path(__file__).resolve().parent.parent.parent
+            / "data"
+            / "casos_de_teste.csv"
+        )
+        if not test_cases_path.exists():
+            logging.warning(  # noqa: LOG015
+                "Arquivo de casos de teste não encontrado em %s. Pulando esta etapa.",
+                test_cases_path,
+            )
+            return
+
+        logging.info("Ingerindo casos de teste de %s...", test_cases_path)  # noqa: LOG015
+
+        try:
+            df = pd.read_csv(test_cases_path, sep=";", encoding="latin-1")
+            # Usa os nomes de coluna do arquivo CSV
+            df.columns = [
+                "rcm_id",
+                "caso_teste_id",
+                "descricao_teste",
+                "status_teste",
+                "data_execucao",
+                "responsavel_teste",
+                "versao_software",
+            ]
+            df = df.dropna(subset=["rcm_id", "caso_teste_id", "status_teste"])
+            records = df.to_dict("records")
+
+            ingest_query = """
+            UNWIND $records AS record
+            MERGE (rcm:RCM {id: record.rcm_id})
+            ON CREATE SET rcm.titulo = 'RCM criada a partir de caso de teste: ' + record.rcm_id
+            CREATE (ct:CasoDeTeste {
+                id: record.caso_teste_id,
+                descricao: record.descricao_teste,
+                status: record.status_teste,
+                dataExecucao: record.data_execucao,
+                responsavel: record.responsavel_teste,
+                versaoSoftware: record.versao_software
+            })
+            MERGE (rcm)-[:TEM_TESTE]->(ct)
+            """
+            self.graph.query(ingest_query, params={"records": records})
+            logging.info("Ingestão de casos de teste concluída.")  # noqa: LOG015
+        except Exception as e:
+            logging.exception("Falha ao ingerir casos de teste: %s", e)  # noqa: LOG015, TRY401
+
     def run_ingestion(self) -> None:
         """
         Executa o pipeline completo de ingestão de dados.
@@ -233,13 +379,19 @@ class DataIngestion:
         logging.info("Limpando banco de dados Neo4j existente...")  # noqa: LOG015
         self.graph.query("MATCH (n) DETACH DELETE n")
 
-        # 1. Ingestão de dados estruturados (Solicitações, Clientes, etc.)
+        # Fase 1: Ingestão de dados estruturados (Solicitações, Clientes, etc.)
         self._load_and_ingest_structured_data()
 
-        # 2. Ingestão de dados de custo
+        # Fase 2: Ingestão de dados de custo
         self._load_and_ingest_cost_data()
 
-        # 2. Ingestão de documentos não estruturados (Manuais)
+        # Fase 3: Ingestão de RCMs e seus documentos associados
+        self._load_and_ingest_rcm_data()
+
+        # Fase 3.5: Ingestão de Casos de Teste associados às RCMs
+        self._load_and_ingest_test_cases()
+
+        # Fase 4: Ingestão de documentos não estruturados (Manuais)
         logging.info("Iniciando o carregamento dos documentos não estruturados...")  # noqa: LOG015
 
         documents = self._load_documents()
@@ -312,6 +464,7 @@ if __name__ == "__main__":
     ingestion_pipeline = DataIngestion(
         data_directory="data",
         structured_data_path="data/solicitacoes.csv",
+        rcm_data_path="data/rcms_01.csv",
         single_manual_path="data/manuais/SIGRH - PSE - Processo Seletivo/UCS0325 - Manter Edital.docx",  # noqa: E501
     )
     ingestion_pipeline.run_ingestion()
