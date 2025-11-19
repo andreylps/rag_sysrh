@@ -429,24 +429,29 @@ class DataIngestion:
         logging.info(f"Documentos divididos em {len(chunks)} trechos.")  # noqa: G004, LOG015
 
         logging.info("Ingerindo chunks no Neo4j...")  # noqa: LOG015
-        for chunk in chunks:
-            # Extrai metadados e texto do chunk
-            source_doc = chunk.metadata.get("source", "desconhecido").split(os.sep)[-1]  # noqa: PTH206
-            page = chunk.metadata.get("page", 0)
 
-            # Cria nós :Manual e :Chunk e o relacionamento entre eles
-            self.graph.query(
-                """
-                MERGE (m:Manual {nome: $source_doc})
-                CREATE (c:Chunk {texto: $texto, pagina: $page})
-                MERGE (c)-[:PARTE_DE]->(m)
-                """,
-                params={
-                    "source_doc": source_doc,
+        # Prepara os dados dos chunks para ingestão em lote
+        chunk_records = []
+        for chunk in chunks:
+            chunk_records.append(
+                {
+                    "source_doc": chunk.metadata.get("source", "desconhecido").split(
+                        os.sep
+                    )[-1],
                     "texto": chunk.page_content,
-                    "page": page,
-                },
+                    "page": chunk.metadata.get("page", 0),
+                }
             )
+
+        # Ingestão em lote dos chunks
+        ingest_chunks_query = """
+        UNWIND $records AS record
+        MERGE (m:Manual {nome: record.source_doc})
+        CREATE (c:Chunk {texto: record.texto, pagina: record.page})
+        MERGE (c)-[:PARTE_DE]->(m)
+        """
+        if chunk_records:
+            self.graph.query(ingest_chunks_query, params={"records": chunk_records})
 
         logging.info("Criação de nós e relacionamentos concluída.")  # noqa: LOG015
 

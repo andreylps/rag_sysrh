@@ -319,6 +319,23 @@ class AnalistaWorkflow:
 
         return workflow.compile()
 
+    def _enrich_and_persist_report(
+        self, solicitacao: str, relatorio: RelatorioAnalise | None
+    ) -> RelatorioAnalise | None:
+        """Enriquece o relatório com o ID da solicitação e persiste os detalhes evolutivos."""
+        if not relatorio:
+            return None
+
+        solicitacao_id = self._buscar_solicitacao_por_texto(solicitacao)
+        relatorio.solicitacao_id = solicitacao_id
+
+        # Se a análise gerou detalhes de uma demanda evolutiva, salva no grafo.
+        if relatorio.detalhes_evolutiva and solicitacao_id != -1:
+            self._registrar_detalhes_evolutiva(
+                solicitacao_id, relatorio.detalhes_evolutiva
+            )
+        return relatorio
+
     def run(self, solicitacao: str) -> RelatorioAnalise:
         """Executa o workflow completo para uma dada solicitação."""
         # Inicializa o estado com todas as chaves para satisfazer o type checker.
@@ -334,24 +351,7 @@ class AnalistaWorkflow:
         final_state = self.graph.invoke(initial_state)
         relatorio_final = final_state.get("relatorio_final")
 
-        # Busca o ID da solicitação no grafo para enriquecer o relatório
-        solicitacao_id = self._buscar_solicitacao_por_texto(solicitacao)
-
-        if relatorio_final:
-            # Adiciona o ID encontrado ao objeto de relatório
-            relatorio_final.solicitacao_id = solicitacao_id
-
-        # Se a análise gerou detalhes de uma demanda evolutiva, salva no grafo.
-        if (
-            relatorio_final
-            and relatorio_final.detalhes_evolutiva
-            and solicitacao_id != -1
-        ):
-            self._registrar_detalhes_evolutiva(
-                solicitacao_id, relatorio_final.detalhes_evolutiva
-            )
-
-        return relatorio_final
+        return self._enrich_and_persist_report(solicitacao, relatorio_final)
 
 
 if __name__ == "__main__":
