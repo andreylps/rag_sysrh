@@ -111,6 +111,11 @@ Instruções importantes para a geração de Cypher:
 6. Para buscar por código de manual (ex: 'UCS0083'), filtre a propriedade `codigo_ucs` no nó `:Manual`. Exemplo: `MATCH (m:Manual) WHERE m.codigo_ucs = 'UCS0083' RETURN m.texto_completo`.
 7. Para buscar por 'Regra de Negócio' ou 'RN' (ex: 'RN001'), combine buscas com `AND`. Exemplo: `MATCH (m:Manual) WHERE m.texto_completo CONTAINS 'RN001' AND m.texto_completo CONTAINS 'Proposta de Consignação' RETURN m.texto_completo`.
 8. Se a pergunta for sobre RCMs de um cliente, primeiro encontre as solicitações do cliente e depois as RCMs relacionadas. Exemplo: `MATCH (r:RCM)-[:ORIGINADO_DE]->(s:Solicitacao)-[:ASSOCIADA_A]->(c:Cliente) WHERE toLower(c.nome) = 'alesc' RETURN r.id`.
+9. **IMPORTANTE para UNION**: Se você precisar combinar resultados de diferentes tipos de nós usando `UNION`, **SEMPRE** use aliases (`AS`) para garantir que os nomes das colunas de retorno sejam idênticos em todas as partes da consulta.
+   Exemplo de `UNION` correto:
+     `MATCH (s:Solicitacao) WHERE s.title CONTAINS 'relatório' RETURN s.title AS titulo, s.texto_completo AS descricao`
+     `UNION`
+     `MATCH (r:RCM) WHERE r.titulo CONTAINS 'relatório' RETURN r.titulo AS titulo, r.id AS descricao`
 
 Schema:
 {schema}

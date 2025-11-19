@@ -33,11 +33,15 @@ class DetalhesEvolutiva(BaseModel):
     )
 
 
-class AnaliseRelatorio(BaseModel):
+class RelatorioAnalise(BaseModel):
     """
     Modelo de dados para o relatório final de análise da solicitação.
     """
 
+    solicitacao_id: int | None = Field(
+        default=None,
+        description="O ID numérico da solicitação original no banco de dados.",
+    )
     tipo_problema: str = Field(
         description="Classificação do tipo de problema (ex: Dúvida, Erro, Melhoria)."
     )
@@ -79,7 +83,7 @@ class WorkflowState(TypedDict):
     dados_manuais: str | list | dict | None
     dados_rcm_especifico: str | None
     diagnostico: str | None
-    relatorio_final: AnaliseRelatorio | None
+    relatorio_final: RelatorioAnalise | None
 
 
 class AnalistaWorkflow:
@@ -97,6 +101,23 @@ class AnalistaWorkflow:
             password=os.getenv("NEO4J_PASSWORD"),
         )
         self.graph = self._build_graph()
+
+    def _buscar_solicitacao_por_texto(self, texto_solicitacao: str) -> int:
+        """Busca o ID de uma solicitação no grafo usando seu texto/título."""
+        logging.info("Buscando ID da solicitação correspondente no grafo...")
+        # Esta query busca por similaridade no título ou na descrição completa
+        query = """
+        MATCH (s:Solicitacao)
+        WHERE s.title CONTAINS $texto OR s.texto_completo CONTAINS $texto
+        RETURN s.id AS id
+        LIMIT 1
+        """
+        resultado = self.db_graph.query(query, params={"texto": texto_solicitacao})
+        if resultado:
+            solicitacao_id = resultado[0]["id"]
+            logging.info(f"Solicitação encontrada com ID: {solicitacao_id}")
+            return solicitacao_id
+        return -1  # Retorna um ID inválido se não encontrar
 
     def classificar_solicitacao(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 1: Classificando a solicitação...")  # noqa: LOG015
@@ -148,14 +169,19 @@ class AnalistaWorkflow:
 
     def gerar_diagnostico(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 4: Gerando diagnóstico...")  # noqa: LOG015
+
+        # Trunca o contexto para evitar exceder o limite de tokens
+        historico_str = str(state.get("dados_historico", ""))[:4000]
+        manuais_str = str(state.get("dados_manuais", ""))[:4000]
+
         prompt = ChatPromptTemplate.from_template(
             """Você é um analista de sistemas sênior. Com base nas informações coletadas, gere um diagnóstico técnico detalhado para que a equipe de desenvolvimento possa atuar.
 
             Solicitação Original: {solicitacao}
             Classificação: {classificacao}
-            Dados do Histórico (solicitações parecidas): {historico}
+            Dados do Histórico (solicitações parecidas - RESUMIDO): {historico}
             Dados de RCM Específico (se aplicável): {rcm_especifico}
-            Dados dos Manuais (regras e procedimentos): {manuais}
+            Dados dos Manuais (regras e procedimentos - RESUMIDO): {manuais}
 
             **Instruções:**
             1.  Se a **Classificação** for 'Solicitação de Melhoria' (demanda evolutiva), o diagnóstico deve ser impecável e servir de base para a criação de uma RCM (Requisição de Mudança). Detalhe os seguintes pontos:
@@ -174,20 +200,20 @@ class AnalistaWorkflow:
             {
                 "solicitacao": state["solicitacao_original"],
                 "classificacao": state["classificacao"],
-                "historico": str(state.get("dados_historico", "")),
+                "historico": historico_str,
                 "rcm_especifico": state["dados_rcm_especifico"]
                 or "Nenhum RCM específico mencionado.",
-                "manuais": str(state.get("dados_manuais", "")),
+                "manuais": manuais_str,
             }
         ).content
         return {"diagnostico": diagnostico_str}
 
     def gerar_relatorio_final(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 5: Gerando relatório final...")  # noqa: LOG015
-        structured_llm = self.llm.with_structured_output(AnaliseRelatorio)
+        structured_llm = self.llm.with_structured_output(RelatorioAnalise)
         prompt = ChatPromptTemplate.from_template(
-            """Gere um relatório de análise estruturado com base em todo o contexto.
-            Seu objetivo é preencher todos os campos do modelo `AnaliseRelatorio`.
+            """Gere um relatório de análise estruturado com base em todo o contexto. Ignore o campo `solicitacao_id`, ele será preenchido depois.
+            Seu objetivo é preencher todos os campos do modelo `RelatorioAnalise`, exceto `solicitacao_id`.
 
             Solicitação Original: {solicitacao}
             Classificação: {classificacao}
@@ -202,11 +228,18 @@ class AnalistaWorkflow:
             5.  **complexidade**: Com base no diagnóstico e, PRINCIPALMENTE, nos dados do RCM específico (se houver), classifique a complexidade como 'Baixa', 'Média', 'Alta' ou 'Ultra'. Se um RCM similar teve esforço alto, a complexidade deve ser compatível.
             6.  **solucao_sugerida**: Descreva os passos ou a solução técnica recomendada.
             7.  **esforco_resolucao_dias**: Com base na complexidade definida, estime o esforço de resolução em dias úteis seguindo estas regras: 'Baixa' -> '0-2 dias', 'Média' -> '3-7 dias', 'Alta' -> '8-15 dias', 'Ultra' -> '15-30 dias'.
-            8.  **detalhes_evolutiva**: Se o `tipo_problema` for 'Melhoria' ou 'Evolutivo', preencha os sub-campos:
-                - **data_prevista_entrega**: Estime uma data de entrega realista.
+            8.  **detalhes_evolutiva**: Se o `tipo_problema` for 'Melhoria' ou 'Evolutivo', preencha os sub-campos de acordo com as seguintes regras:
                 - **estimativa_pontos_funcao**: Forneça uma estimativa em Pontos de Função (ex: 8, 16, 32). Baseie-se no esforço do RCM específico, se disponível.
-                - **prazo_dias_uteis**: Calcule o número de dias úteis até a data de entrega.
-                - Se não for uma melhoria, retorne `null` para este campo.
+                - **prazo_dias_uteis**: Use a `estimativa_pontos_funcao` para calcular o prazo em dias úteis com base na tabela abaixo. Use o valor da coluna 'dias normais'.
+                    Tabela de Prazos por Pontos de Função (PF):
+                    - Até 10 PF: 9 dias
+                    - De 11 a 20 PF: 18 dias
+                    - De 21 a 30 PF: 27 dias
+                    - De 31 a 40 PF: 36 dias
+                    - De 41 a 50 PF: 45 dias
+                    - De 51 a 99 PF: Use um valor proporcional entre 54 e 79 dias.
+                - **data_prevista_entrega**: Calcule a data de entrega somando o `prazo_dias_uteis` à data atual.
+                - Se o tipo de problema não for 'Melhoria' ou 'Evolutivo', retorne `null` para este campo.
             9.  **nivel_esforco**: Calcule o nível de esforço (Baixo, Médio, Alto) combinando a `complexidade` e a `estimativa_pontos_funcao`."""  # noqa: E501
         )
         chain = prompt | structured_llm
@@ -225,7 +258,8 @@ class AnalistaWorkflow:
             logging.exception("Falha ao parsear a saída do LLM: %s", e)  # noqa: LOG015, TRY401
             # Retorna um estado de erro ou um relatório parcial
             return {
-                "relatorio_final": AnaliseRelatorio(
+                "relatorio_final": RelatorioAnalise(
+                    solicitacao_id=-1,
                     tipo_problema="Erro de Análise",
                     resumo_problema=f"Ocorreu um erro ao gerar o relatório: {e}",
                     diagnostico="",
@@ -239,7 +273,7 @@ class AnalistaWorkflow:
             }
 
     def _registrar_detalhes_evolutiva(
-        self, solicitacao_id: str, detalhes: DetalhesEvolutiva
+        self, solicitacao_id: int, detalhes: DetalhesEvolutiva
     ) -> None:
         """Salva os detalhes da análise evolutiva no grafo."""
         logging.info(
@@ -285,7 +319,7 @@ class AnalistaWorkflow:
 
         return workflow.compile()
 
-    def run(self, solicitacao: str) -> AnaliseRelatorio:
+    def run(self, solicitacao: str) -> RelatorioAnalise:
         """Executa o workflow completo para uma dada solicitação."""
         # Inicializa o estado com todas as chaves para satisfazer o type checker.
         initial_state: WorkflowState = {
@@ -300,15 +334,24 @@ class AnalistaWorkflow:
         final_state = self.graph.invoke(initial_state)
         relatorio_final = final_state.get("relatorio_final")
 
+        # Busca o ID da solicitação no grafo para enriquecer o relatório
+        solicitacao_id = self._buscar_solicitacao_por_texto(solicitacao)
+
+        if relatorio_final:
+            # Adiciona o ID encontrado ao objeto de relatório
+            relatorio_final.solicitacao_id = solicitacao_id
+
         # Se a análise gerou detalhes de uma demanda evolutiva, salva no grafo.
-        if relatorio_final and relatorio_final.detalhes_evolutiva:
-            # Extrai o ID da solicitação original para o relacionamento
-            solicitacao_id = solicitacao.split("-")[0].strip()
+        if (
+            relatorio_final
+            and relatorio_final.detalhes_evolutiva
+            and solicitacao_id != -1
+        ):
             self._registrar_detalhes_evolutiva(
                 solicitacao_id, relatorio_final.detalhes_evolutiva
             )
 
-        return final_state["relatorio_final"]
+        return relatorio_final
 
 
 if __name__ == "__main__":
@@ -322,7 +365,7 @@ if __name__ == "__main__":
     relatorio = analista_agent.run(texto_solicitacao)
 
     print("\n--- Relatório de Análise da Solicitação ---")
-    # Corrigido para usar os nomes de atributo corretos do modelo AnaliseRelatorio
+    # Corrigido para usar os nomes de atributo corretos do modelo RelatorioAnalise
     print(f"Classificação: {relatorio.tipo_problema}")
     print(f"Resumo: {relatorio.resumo_problema}")
     print(f"Diagnóstico: {relatorio.diagnostico}")

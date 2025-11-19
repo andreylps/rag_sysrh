@@ -119,7 +119,10 @@ class DataIngestion:
     def _load_and_ingest_cost_data(self) -> None:
         """Carrega dados de custo de um CSV e cria nós :Custo."""
         cost_data_path = (
-            Path(__file__).resolve().parent.parent.parent / "data" / "custos.csv"
+            Path(__file__).resolve().parent.parent.parent
+            / "data"
+            / "faturamento"
+            / "custos.csv"
         )
         if not cost_data_path.exists():
             logging.warning(  # noqa: LOG015
@@ -131,12 +134,12 @@ class DataIngestion:
         logging.info("Ingerindo dados de custo de %s...", cost_data_path)  # noqa: LOG015
 
         try:
-            df = pd.read_csv(cost_data_path, sep=";", encoding="latin-1")
+            df = pd.read_csv(cost_data_path, sep=",", encoding="latin-1")
             records = df.to_dict("records")
 
             ingest_query = """
             UNWIND $records AS record
-            MERGE (c:Custo {tipo: record.tipo_custo, chave: record.chave})
+            MERGE (c:Custo {tipo: record.tipo})
             ON CREATE SET c.valor = toFloat(record.valor)
             ON MATCH SET c.valor = toFloat(record.valor)
             """
@@ -245,6 +248,7 @@ class DataIngestion:
         try:
             df = pd.read_csv(rcm_data_abs_path, sep=";", encoding="latin-1", skiprows=1)
             # Renomeia as colunas para um formato limpo e previsível
+            # Renomeia as colunas para um formato limpo e previsível
             df.columns = [
                 "rcm_id_raw",
                 "work_item_type",  # Usado para extrair o cliente
@@ -259,63 +263,82 @@ class DataIngestion:
                 "data_prevista_entrega",
                 "data_conclusao_real",
             ]
-            # Extrai apenas o ID da RCM (ex: "RCM-001") do título
-            df["rcm_id"] = df["title"].str.extract(r"(RCM-\d+)")
-            df["horas_reais"] = df["effort"]  # Mapeamento temporário
+            # Usa a coluna 'rcm_id_raw' (que é o ID original do item de trabalho) como o identificador principal.
+            # Isso é mais robusto do que extrair do título.
+            df["rcm_id"] = df["rcm_id_raw"].astype(str)
 
             # Remove linhas onde o rcm_id não foi encontrado para evitar erros de NaN
             df = df.dropna(subset=["rcm_id"])
 
+            # Garante que as colunas numéricas tenham um valor padrão (0) se estiverem vazias
+            df["effort"] = pd.to_numeric(df["effort"], errors="coerce").fillna(0.0)
+            # Cria a coluna 'horas_reais' a partir de 'effort' e garante que seja numérica
+            df["horas_reais"] = pd.to_numeric(df["effort"], errors="coerce").fillna(0)
+
             rcm_records = df.to_dict("records")
 
-            for record in rcm_records:
-                # 1. Cria o nó RCM e o relaciona com a Solicitação
-                ingest_rcm_query = """
-                // Encontra a Solicitação pelo ID que está no título da RCM
-                // Ex: RCM title "43201;...;1451/2020 - CORRIGIR..."
-                //     Solicitacao title "1451/2020 - CORRIGIR..."
-                MATCH (s:Solicitacao) WHERE $rcm_id_raw CONTAINS s.title
-                MERGE (rcm:RCM {id: $rcm_id}) // Cria a RCM com seu ID único
-                SET rcm += {
-                    status: $status,
-                    horas_reais: toFloat($horas_reais),
-                    pontos_funcao: toFloat($effort),
-                    data_prevista_entrega: $data_prevista_entrega,
-                    data_conclusao_real: $data_conclusao_real,
-                    titulo: $title,
-                    tipo_solicitacao: $tipo_solicitacao
-                }
-                MERGE (rcm)-[:ORIGINADO_DE]->(s)
-                """
-                self.graph.query(ingest_rcm_query, params=record)
+            # 1. Ingestão em LOTE dos nós RCM (CORRIGIDO)
+            ingest_rcm_query = """
+            UNWIND $records AS record
+            MERGE (rcm:RCM {id: record.rcm_id})
+            SET rcm += {
+                status: record.status,
+                horas_reais: toFloat(record.horas_reais),
+                pontos_funcao: toFloat(record.effort), 
+                data_prevista_entrega: record.data_prevista_entrega,
+                data_conclusao_real: record.data_conclusao_real,
+                titulo: record.title,
+                tipo_solicitacao: record.tipo_solicitacao,
+                rcm_id_raw: record.rcm_id_raw
+            }
+            """
+            self.graph.query(ingest_rcm_query, params={"records": rcm_records})
 
-                # 2. Procura e processa o documento .docx associado
-                rcm_id = record.get("rcm_id")
+            # 2. Criação em LOTE dos relacionamentos com Solicitações (CORRIGIDO)
+            link_rcm_solicitacao_query = """
+            UNWIND $records AS record
+            MATCH (rcm:RCM {id: record.rcm_id})
+            MATCH (s:Solicitacao) WHERE record.rcm_id_raw CONTAINS s.title
+            MERGE (rcm)-[:ORIGINADO_DE]->(s)
+            """
+            self.graph.query(
+                link_rcm_solicitacao_query, params={"records": rcm_records}
+            )
+
+            # 3. Processamento dos documentos .docx associados (continua em loop, pois é I/O de arquivo)
+            for record in rcm_records:
+                rcm_id = record.get(
+                    "rcm_id_raw"
+                )  # Usar o ID original para nome do arquivo
+                if not rcm_id:
+                    continue
                 rcm_doc_path = (
                     Path(__file__).resolve().parent.parent.parent
                     / "data"
                     / "rcms"
                     / f"{rcm_id}.docx"
                 )
-
                 if rcm_doc_path.exists():
-                    logging.info("Processando documento: %s", rcm_doc_path)  # noqa: LOG015
+                    logging.info("Processando documento associado: %s", rcm_doc_path)
                     loader = Docx2txtLoader(str(rcm_doc_path))
                     documents = loader.load()
 
                     text_splitter = RecursiveCharacterTextSplitter(
-                        chunk_size=1000, chunk_overlap=200
+                        chunk_size=1500, chunk_overlap=200
                     )
                     chunks = text_splitter.split_documents(documents)
 
                     for chunk in chunks:
                         self.graph.query(
                             """
-                            MATCH (rcm:RCM {id: $rcm_id})
+                            MATCH (rcm:RCM {id: $rcm_node_id})
                             CREATE (c:Chunk {texto: $texto})
                             MERGE (c)-[:PARTE_DE]->(rcm)
                             """,
-                            params={"rcm_id": rcm_id, "texto": chunk.page_content},
+                            params={
+                                "rcm_node_id": record.get("rcm_id"),
+                                "texto": chunk.page_content,
+                            },
                         )
             logging.info("Ingestão de dados de RCMs concluída.")  # noqa: LOG015
         except Exception as e:

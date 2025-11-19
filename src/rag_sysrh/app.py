@@ -14,6 +14,7 @@ from langchain_openai import ChatOpenAI
 from rag_sysrh.agent_executor import build_agent
 from rag_sysrh.agente_documentacao import AgenteDocumentacao
 from rag_sysrh.agente_faturamento import AgenteFaturamento
+from rag_sysrh.agente_planejamento_rcm import AgentePlanejamentoRCM
 from rag_sysrh.agente_qualidade import AgenteQualidade
 from rag_sysrh.analista_workflow import AnalistaWorkflow
 from rag_sysrh.main import get_tools
@@ -41,6 +42,12 @@ def load_analista_workflow(_tools: list[Tool]) -> AnalistaWorkflow:
 def load_agente_documentacao() -> AgenteDocumentacao:
     """Carrega o agente de documentação e o armazena em cache."""
     return AgenteDocumentacao()
+
+
+@st.cache_resource
+def load_agente_planejamento_rcm() -> AgentePlanejamentoRCM:
+    """Carrega o agente de planejamento de RCM e o armazena em cache."""
+    return AgentePlanejamentoRCM()
 
 
 class StreamlitLogHandler(logging.Handler):
@@ -97,6 +104,23 @@ def carregar_dados_faturamento() -> None:
             )
         logging.info("Dados de metas de faturamento carregados/atualizados no Neo4j.")
 
+    # Carrega exemplos de cálculo de faturamento como base de conhecimento
+    exemplos_path = "data/faturamento/exemplos_calculo_faturamento.csv"
+    if os.path.exists(exemplos_path):
+        df_exemplos = pd.read_csv(exemplos_path)
+        # Converte todas as colunas para string para evitar problemas de tipo no Neo4j
+        df_exemplos = df_exemplos.astype(str)
+        for _, row in df_exemplos.iterrows():
+            properties = row.to_dict()
+            graph.query(
+                """
+                MERGE (e:ExemploCalculoFaturamento {chamado_id: $chamado_id})
+                SET e += $properties
+                """,
+                params={"chamado_id": row["chamado_id"], "properties": properties},
+            )
+        logging.info("Base de conhecimento de faturamento carregada/atualizada.")
+
 
 # --- INTERFACES DE RENDERIZAÇÃO ---
 
@@ -151,57 +175,91 @@ def render_analysis_interface() -> None:
     tools = load_tools()
     workflow = load_analista_workflow(tools)
 
+    # Inicializa o estado da sessão para o relatório
+    if "relatorio_analise" not in st.session_state:
+        st.session_state.relatorio_analise = None
+
     solicitacao_texto = st.text_area("Cole o texto da solicitação aqui:", height=150)
 
     if st.button("Analisar Solicitação"):
         if not solicitacao_texto:
             st.warning("Por favor, insira o texto da solicitação.")
         else:
+            st.session_state.relatorio_analise = None  # Limpa o relatório anterior
             with st.spinner(
                 "Executando workflow de análise... Isso pode levar um minuto."
             ):
                 try:
                     relatorio = workflow.run(solicitacao_texto)
-
-                    st.markdown("---")
-                    st.markdown("### 📄 Relatório de Análise")
-
-                    # Seção de Análise Geral
-                    st.info(f"**Tipo do Problema:** {relatorio.tipo_problema}")
-                    st.info(f"**Tipo de Solicitação:** {relatorio.tipo_solicitacao}")
-                    st.success(f"**Resumo do Problema:** {relatorio.resumo_problema}")
-                    st.warning(f"**Diagnóstico Técnico:** {relatorio.diagnostico}")
-                    st.success(f"**Solução Sugerida:** {relatorio.solucao_sugerida}")
-
-                    # Seção de Esforço e Complexidade
-                    st.markdown("#### Análise de Esforço")
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric(label="Complexidade", value=relatorio.complexidade)
-                    col2.metric(
-                        label="Esforço de Resolução",
-                        value=relatorio.esforco_resolucao_dias,
-                    )
-                    col3.metric(label="Nível de Esforço", value=relatorio.nivel_esforco)
-
-                    # Seção Específica para Demandas Evolutivas
-                    if relatorio.detalhes_evolutiva:
-                        st.markdown("#### Planejamento da Demanda Evolutiva")
-                        col1, col2, col3 = st.columns(3)
-                        col1.metric(
-                            label="Estimativa (Pontos de Função)",
-                            value=f"{relatorio.detalhes_evolutiva.estimativa_pontos_funcao} PF",  # noqa: E501
-                        )
-                        col2.metric(
-                            label="Prazo (Dias Úteis)",
-                            value=f"{relatorio.detalhes_evolutiva.prazo_dias_uteis} dias",  # noqa: E501
-                        )
-                        col3.metric(
-                            label="Data Prevista de Entrega",
-                            value=relatorio.detalhes_evolutiva.data_prevista_entrega,
-                        )
-
+                    st.session_state.relatorio_analise = relatorio
                 except Exception as e:  # noqa: BLE001
                     st.error(f"Ocorreu um erro durante a análise: {e}")
+                    st.session_state.relatorio_analise = None
+
+    # Exibe o relatório se ele existir no estado da sessão
+    if st.session_state.relatorio_analise:
+        relatorio = st.session_state.relatorio_analise
+        st.markdown("---")
+        st.markdown("### 📄 Relatório de Análise")
+
+        # Seção de Análise Geral
+        st.info(f"**Tipo do Problema:** {relatorio.tipo_problema}")
+        st.info(f"**Tipo de Solicitação:** {relatorio.tipo_solicitacao}")
+        st.success(f"**Resumo do Problema:** {relatorio.resumo_problema}")
+        st.warning(f"**Diagnóstico Técnico:** {relatorio.diagnostico}")
+        st.success(f"**Solução Sugerida:** {relatorio.solucao_sugerida}")
+
+        # Seção de Esforço e Complexidade
+        st.markdown("#### Análise de Esforço")
+        col1, col2, col3 = st.columns(3)
+        col1.metric(label="Complexidade", value=relatorio.complexidade)
+        col2.metric(
+            label="Esforço de Resolução",
+            value=relatorio.esforco_resolucao_dias,
+        )
+        col3.metric(label="Nível de Esforço", value=relatorio.nivel_esforco)
+
+        # Seção Específica para Demandas Evolutivas
+        if relatorio.detalhes_evolutiva:
+            st.markdown("#### Planejamento da Demanda Evolutiva")
+            col1, col2, col3 = st.columns(3)
+            col1.metric(
+                label="Estimativa (Pontos de Função)",
+                value=f"{relatorio.detalhes_evolutiva.estimativa_pontos_funcao} PF",  # noqa: E501
+            )
+            col2.metric(
+                label="Prazo (Dias Úteis)",
+                value=f"{relatorio.detalhes_evolutiva.prazo_dias_uteis} dias",  # noqa: E501
+            )
+            col3.metric(
+                label="Data Prevista de Entrega",
+                value=relatorio.detalhes_evolutiva.data_prevista_entrega,
+            )
+
+        # --- INTEGRAÇÃO DO NOVO AGENTE DE PLANEJAMENTO ---
+        st.markdown("---")
+        st.markdown("### 📋 Próximo Passo: Planejamento da RCM")
+        if st.button("Gerar Plano de RCM Estruturado"):
+            with st.spinner("O Agente de Planejamento está elaborando a RCM..."):
+                try:
+                    agente_planejamento = load_agente_planejamento_rcm()
+                    plano_rcm = agente_planejamento.gerar_plano_rcm(relatorio)
+
+                    # Formata o plano em um layout de Markdown profissional
+                    markdown_output = agente_planejamento.formatar_plano_para_markdown(
+                        plano_rcm
+                    )
+                    st.markdown(markdown_output, unsafe_allow_html=True)
+
+                    # Salva o plano gerado no Neo4j
+                    # Assumimos que o `relatorio` contém o ID da solicitação original.
+                    agente_planejamento.salvar_plano_rcm(
+                        plano_rcm, relatorio.solicitacao_id
+                    )
+                    st.toast("✅ Plano de RCM salvo no banco de dados!")
+
+                except Exception as e:
+                    st.error(f"Ocorreu um erro ao gerar o plano de RCM: {e}")
 
 
 def render_dashboard_interface() -> None:
@@ -319,6 +377,33 @@ def render_proactive_agents_interface() -> None:  # noqa: C901, PLR0912, PLR0915
                     f"Ocorreu um erro durante a execução do Agente de Qualidade: {e}"
                 )
 
+    # Seção para simulação de dados para testes
+    with st.expander("🔧 Ferramentas de Teste e Simulação"):
+        st.write(
+            "Use estes botões para simular eventos no sistema e gerar dados para os agentes."
+        )
+        if st.button("Simular Conclusão de RCM"):
+            try:
+                graph = Neo4jGraph(
+                    url=os.getenv("NEO4J_URI"),
+                    username=os.getenv("NEO4J_USERNAME"),
+                    password=os.getenv("NEO4J_PASSWORD"),
+                )
+                # Encontra uma RCM que ainda não está concluída e a atualiza
+                query = """
+                MATCH (r:RCM) WHERE NOT toLower(toString(r.status)) = 'concluído'
+                WITH r LIMIT 1
+                SET r.status = 'Concluído'
+                RETURN r.id AS rcm_id
+                """
+                result = graph.query(query)
+                if result:
+                    st.success(f"RCM '{result[0]['rcm_id']}' marcada como 'Concluído'!")
+                else:
+                    st.warning("Nenhuma RCM encontrada para simular a conclusão.")
+            except Exception as e:
+                st.error(f"Falha ao simular conclusão: {e}")
+
     st.markdown("---")
     st.markdown("### Agente de Faturamento")
     st.write(
@@ -339,35 +424,82 @@ def render_proactive_agents_interface() -> None:  # noqa: C901, PLR0912, PLR0915
                     or relatorio.dados_rentabilidade_grafico
                 ):
                     # Gráfico 1: Predição de Faturamento
-                    status.update(label="Renderizando gráficos...")
-                    st.markdown("#### Gráfico Comparativo de Faturamento")
-                    df_predicao = pd.DataFrame(
+                    df_predicao_raw = pd.DataFrame(
                         [d.model_dump() for d in relatorio.dados_predicao_grafico]
                     )
-                    if not df_predicao.empty:
-                        df_predicao["mes"] = pd.to_datetime(
-                            df_predicao["mes"]
-                        ).dt.strftime("%Y-%m")
-                        chart = (
-                            alt.Chart(df_predicao)
+                    # O agente também busca as metas, mas elas não vêm no objeto de retorno.
+                    # Por simplicidade, vamos buscá-las aqui também.
+                    # Em uma evolução, poderiam ser adicionadas ao objeto RelatorioFaturamento.
+                    graph = Neo4jGraph(
+                        url=os.getenv("NEO4J_URI"),
+                        username=os.getenv("NEO4J_USERNAME"),
+                        password=os.getenv("NEO4J_PASSWORD"),
+                    )
+                    metas_data = graph.query(
+                        "MATCH (m:MetaFaturamento) RETURN m.mes AS mes, m.meta AS meta"
+                    )
+                    df_metas = pd.DataFrame(metas_data)
+
+                    status.update(label="Renderizando gráficos...")
+                    st.markdown(
+                        "#### Análise de Faturamento: Realizado vs. Previsto vs. Meta"
+                    )
+                    if not df_predicao_raw.empty:
+                        # Pivotar os dados para o formato "wide"
+                        df_pivot = df_predicao_raw.pivot(
+                            index="mes", columns="tipo", values="valor"
+                        ).reset_index()
+                        df_pivot["mes"] = pd.to_datetime(df_pivot["mes"]).dt.strftime(
+                            "%Y-%m"
+                        )
+
+                        # Juntar com as metas
+                        if not df_metas.empty:
+                            df_final = pd.merge(
+                                df_pivot, df_metas, on="mes", how="left"
+                            )
+                        else:
+                            df_final = df_pivot
+                            df_final["meta"] = 0
+
+                        # Preparar para o gráfico em camadas
+                        df_melted = df_final.melt(
+                            id_vars=["mes", "meta"],
+                            value_vars=["Realizado", "Previsto"],
+                            var_name="Legenda",
+                            value_name="Valor",
+                        )
+
+                        # Gráfico de Barras
+                        bar_chart = (
+                            alt.Chart(df_melted)
                             .mark_bar()
                             .encode(
-                                x=alt.X(
-                                    "mes:N", title="Mês", sort=alt.SortField("mes")
-                                ),
-                                y=alt.Y("valor:Q", title="Valor (R$)"),
+                                x=alt.X("mes:N", sort=None, title="Mês"),
+                                y=alt.Y("Valor:Q", title="Valor (R$)"),
                                 color=alt.Color(
-                                    "tipo:N",
-                                    title="Tipo",
+                                    "Legenda:N",
                                     scale=alt.Scale(
                                         domain=["Realizado", "Previsto"],
-                                        range=["#4c78a8", "#f58518"],
+                                        range=["#1f77b4", "#aec7e8"],
                                     ),
                                 ),
-                                tooltip=["mes:N", "valor:Q"],
+                                tooltip=["mes", "Legenda", "Valor"],
                             )
                         )
-                        st.altair_chart(chart, use_container_width=True)
+                        # Linha da Meta
+                        line_chart = (
+                            alt.Chart(df_final)
+                            .mark_line(color="red", strokeDash=[5, 5], size=3)
+                            .encode(
+                                x=alt.X("mes:N", sort=None),
+                                y=alt.Y("meta:Q", title="Meta"),
+                                tooltip=["mes", alt.Tooltip("meta:Q", format="$,.2f")],
+                            )
+                        )
+                        # Sobrepor gráficos
+                        final_chart = (bar_chart + line_chart).interactive()
+                        st.altair_chart(final_chart, use_container_width=True)
 
                     # Gráfico 2: Análise de Rentabilidade
                     st.markdown("#### Análise de Rentabilidade por Entrega")
@@ -400,7 +532,11 @@ def render_proactive_agents_interface() -> None:  # noqa: C901, PLR0912, PLR0915
                     st.info(f"**Insights:**\n{relatorio.insights_historico}")
                     st.success(f"**Previsão:**\n{relatorio.analise_preditiva}")
                 else:
-                    st.warning("Não foram encontrados dados suficientes.")
+                    st.markdown("#### Análise do Agente")
+                    # Exibe as mensagens de ajuda que o agente agora fornece
+                    st.warning(relatorio.insights_historico)
+                    st.info(relatorio.analise_preditiva)
+
             except Exception as e:
                 st.error(f"Erro ao gerar relatório de faturamento: {e}")
 

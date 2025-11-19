@@ -15,8 +15,8 @@ dependencies = [
     "langchain-community",
     "langchain-openai",
     "langchain-neo4j",
-    "langchain-classic", # For ConversationBufferMemory
-    "langchain-smith",   # Adiciona o cliente do LangSmith
+    "langchain-classic", # For ConversationBufferMemory, if needed
+    "langsmith",         # Cliente oficial do LangSmith
     "langgraph",
 
     # Data handling and analysis
@@ -28,6 +28,7 @@ dependencies = [
     # Document loaders & Environment
     "pypdf",
     "docx2txt",
+    "python-docx",
     "unstructured[xlsx]",
     "python-dotenv",
 

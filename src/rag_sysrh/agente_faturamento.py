@@ -139,24 +139,15 @@ class AgenteFaturamento(BaseAgent):
         # e que existem nós :Custo com os valores para 'ponto_funcao' e 'hora_desenvolvimento'.  # noqa: E501
         # A análise de rentabilidade (PF vs Horas) aplica-se apenas a chamados evolutivos.  # noqa: E501
         query = """
-        MATCH (rcm:RCM)-[:ORIGINADO_DE]->(s:Solicitacao)
+        MATCH (rcm:RCM)
         // Garante que as propriedades necessárias existem e são válidas
-        WHERE rcm.status IS NOT NULL
-          AND s.tipo_solicitacao IS NOT NULL
-          AND s.effort IS NOT NULL
-          AND toLower(toString(rcm.status)) IN ['concluído', 'entregue', 'aceite produção'] AND NOT (rcm)-[:TEM_ANALISE_DE]->(:AnaliseRentabilidade)
-        // Interpreta a coluna 'effort' com base no tipo de solicitação
-        WITH rcm, s,
-            CASE
-                WHEN toLower(s.tipo_solicitacao) IN ['evolutivo', 'melhoria'] THEN s.effort
-                ELSE 0 // Se não for evolutivo, não há receita por PF
-            END AS pontos_funcao,
-            // A coluna effort sempre representa as horas para o custo
-            s.effort AS horas_realizadas
+        WHERE toLower(toString(rcm.status)) IN ['concluído', 'entregue', 'aceite produção'] 
+          AND rcm.pontos_funcao IS NOT NULL
+          AND NOT (rcm)-[:TEM_ANALISE_DE]->(:AnaliseRentabilidade)
         RETURN
             rcm.id AS rcm_id,
-            pontos_funcao,
-            horas_realizadas
+            coalesce(rcm.pontos_funcao, 0) AS pontos_funcao,
+            coalesce(rcm.horas_reais, 0) AS horas_realizadas
         LIMIT $limit
         """  # noqa: E501
         return self.graph.query(query, params={"limit": limit})
@@ -204,7 +195,9 @@ class AgenteFaturamento(BaseAgent):
         logging.info(f"Registrando análise de rentabilidade para o RCM ID {rcm_id}...")  # noqa: G004, LOG015
         query = """
         MATCH (rcm:RCM {id: $rcm_id})
+        // Cria o nó de análise e adiciona um timestamp de geração
         CREATE (ar:AnaliseRentabilidade $props)
+        SET ar.data_geracao = datetime()
         MERGE (rcm)-[:TEM_ANALISE_DE]->(ar)
         """
         params = {"rcm_id": rcm_id, "props": analise.model_dump()}
@@ -223,12 +216,10 @@ class AgenteFaturamento(BaseAgent):
             'concluído', 'entregue', 'cancelado', 'aceite produção'
           ]
           AND s.effort IS NOT NULL AND s.effort > 0
-        WITH collect({id: s.id, titulo: s.title, pontos_funcao: s.effort}) AS backlog
-        // Se não houver backlog, a query para aqui e retorna uma lista vazia
-        WHERE size(backlog) > 0
-        RETURN backlog
+        RETURN {id: s.id, titulo: s.title, pontos_funcao: s.effort} AS item
         """  # noqa: E501
-        return self.graph.query(query)
+        results = self.graph.query(query)
+        return [result["item"] for result in results] if results else []
 
     def _gerar_previsao_financeira(
         self, backlog: list[dict], valor_pf: float
@@ -329,11 +320,22 @@ class AgenteFaturamento(BaseAgent):
         """
         return self.graph.query(query, params={"meses": meses})
 
+    def _buscar_exemplos_de_calculo(self, limit: int = 3) -> List[Dict[str, Any]]:
+        """Busca exemplos de cálculo de faturamento para usar como referência."""
+        logging.info("Buscando exemplos de cálculo de faturamento do grafo...")
+        query = """
+        MATCH (e:ExemploCalculoFaturamento)
+        RETURN e.chamado_id AS chamado, e.descricao AS descricao, e.pontos_funcao AS pf, e.valor_calculado AS valor, e.observacao AS obs
+        LIMIT $limit
+        """
+        return self.graph.query(query, params={"limit": limit})
+
     def _gerar_analise_preditiva_com_llm(
         self,
         dados_predicao: List[FaturamentoMensal],
         dados_rentabilidade: List[RentabilidadeEntrega],
         metas: Optional[List[Dict[str, Any]]],
+        exemplos_calculo: List[Dict[str, Any]],
     ) -> RelatorioFaturamento:
         """Usa o LLM para gerar insights e análise preditiva sobre os dados de faturamento."""
         structured_llm = self.llm.with_structured_output(RelatorioFaturamento)
@@ -350,9 +352,12 @@ class AgenteFaturamento(BaseAgent):
             **Metas de Faturamento Mensal (se disponível):**
             {metas_str}
 
+            **Exemplos de Referência de Cálculos Anteriores:**
+            {exemplos_calculo_str}
+
             **Instruções:**
-            1.  **Retorne os Dados para o Gráfico:** Preencha o campo `dados_grafico` com os dados compilados fornecidos, sem alterá-los.
-            2.  **Gere Insights do Histórico:** Analise os dados 'Realizado' dos últimos 3 meses. Identifique tendências (crescimento, queda, estabilidade), compare os meses e destaque qualquer anomalia. Escreva essa análise no campo `insights_historico`.
+            1.  **Retorne os Dados para os Gráficos:** Preencha os campos `dados_predicao_grafico` e `dados_rentabilidade_grafico` com os dados fornecidos, sem alterá-los.
+            2.  **Gere Insights do Histórico:** Analise os dados 'Realizado' dos últimos 3 meses. Identifique tendências (crescimento, queda, estabilidade), compare os meses e destaque qualquer anomalia. Use os exemplos de referência para contextualizar a relação entre pontos de função e valor, se relevante. Escreva essa análise no campo `insights_historico`.
             3.  **Gere Análise Preditiva:** Analise os dados 'Previsto' para os próximos 3 meses. Compare a previsão com o desempenho histórico. Aponte se a previsão é otimista ou pessimista e justifique com base nos dados. Se houver metas, avalie se as previsões estão alinhadas para atingi-las. Forneça recomendações estratégicas (ex: "O faturamento previsto para o próximo mês está abaixo da meta, sugerimos focar em fechar novos projetos do backlog evolutivo."). Escreva essa análise no campo `analise_preditiva`.
             """  # noqa: E501
         )
@@ -363,6 +368,7 @@ class AgenteFaturamento(BaseAgent):
                 "dados_predicao_str": str(dados_predicao),
                 "dados_rentabilidade_str": str(dados_rentabilidade),
                 "metas_str": str(metas) if metas else "Nenhuma meta fornecida.",
+                "exemplos_calculo_str": str(exemplos_calculo),
             }
         )
 
@@ -385,6 +391,7 @@ class AgenteFaturamento(BaseAgent):
         rentabilidade_historica = self._buscar_dados_rentabilidade()
         metas = self._buscar_metas_de_faturamento()
         faturamento_previsto = self._buscar_previsao_futura(meses=3)
+        exemplos_calculo = self._buscar_exemplos_de_calculo()
 
         # 2. Formatar os dados para o modelo Pydantic
         dados_compilados_predicao = []
@@ -412,11 +419,13 @@ class AgenteFaturamento(BaseAgent):
 
         if not dados_compilados_predicao and not dados_compilados_rentabilidade:
             logging.warning("Nenhum dado de faturamento encontrado para análise.")
+            insights_historico = "Nenhum dado histórico de rentabilidade encontrado. Execute o ciclo de rentabilidade após marcar RCMs como 'Concluído' para gerar esses dados."
+            analise_preditiva = "Nenhuma previsão de faturamento pôde ser gerada. Execute a 'Análise de Solicitação' para demandas do tipo 'Melhoria' para criar previsões de entrega."
             return RelatorioFaturamento(
                 dados_predicao_grafico=[],
                 dados_rentabilidade_grafico=[],
-                insights_historico="Nenhum dado histórico de faturamento encontrado para análise.",
-                analise_preditiva="Nenhuma previsão de faturamento pôde ser gerada devido à falta de dados futuros.",
+                insights_historico=insights_historico,
+                analise_preditiva=analise_preditiva,
             )
 
         # Passo 3: Gerar a análise textual com o LLM.
@@ -425,6 +434,7 @@ class AgenteFaturamento(BaseAgent):
             dados_predicao=dados_compilados_predicao,
             dados_rentabilidade=dados_compilados_rentabilidade,
             metas=metas,
+            exemplos_calculo=exemplos_calculo,
         )
 
         logging.info("Análise preditiva de faturamento concluída com sucesso.")
