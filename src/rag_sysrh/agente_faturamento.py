@@ -1,8 +1,10 @@
 import logging
 from typing import Any, Dict, List, Optional
 
-from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
+from langchain_core.prompts import (  # type: ignore
+    ChatPromptTemplate,  # pyright: ignore[reportMissingImports]
+)
+from pydantic import BaseModel, Field  # pyright: ignore[reportMissingImports]
 
 from rag_sysrh.base_agent import BaseAgent
 

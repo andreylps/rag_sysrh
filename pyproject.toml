@@ -8,22 +8,24 @@ requires-python = ">=3.11"
 dependencies = [
     # Core application framework
     "streamlit",
-    "protobuf<5", # Pinned for streamlit compatibility
+    "protobuf<5", # Fixado para compatibilidade com streamlit
 
-    # LangChain components
-    "langchain-core",
-    "langchain-community",
-    "langchain-openai",
-    "langchain-neo4j",
-    "langchain-classic", # For ConversationBufferMemory, if needed
-    "langsmith",         # Cliente oficial do LangSmith
-    "langgraph",
+    # LangChain Stack (Moderna)
+    "langchain",                # Pacote principal (inclui Memory, Chains)
+    "langchain-core",           # Abstrações base
+    "langchain-community",      # Integrações de terceiros
+    "langchain-openai",         # Integração OpenAI
+    "langchain-neo4j",          # Integração Neo4j
+    "langchain-text-splitters", # Para RecursiveCharacterTextSplitter
+    "langsmith",                # Observabilidade e Avaliação
+    "langgraph",                # Orquestração de Agentes
 
     # Data handling and analysis
     "pandas",
     "altair",
     "ftfy",
-    "python-dateutil", # Dependency for pandas
+    "python-dateutil",
+    "openpyxl",                 # Necessário para pandas ler Excel (.xlsx)
 
     # Document loaders & Environment
     "pypdf",

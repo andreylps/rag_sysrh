@@ -2,17 +2,19 @@ import logging
 import os
 from pathlib import Path
 
-import ftfy
-import pandas as pd
-from dotenv import load_dotenv
-from langchain_community.document_loaders import (
+import ftfy  # type: ignore
+import pandas as pd  # type: ignore
+from dotenv import load_dotenv  # pyright: ignore[reportMissingImports]
+from langchain_community.document_loaders import (  # pyright: ignore[reportMissingImports]
     Docx2txtLoader,
     PyPDFLoader,
     UnstructuredExcelLoader,
 )
-from langchain_community.graphs import Neo4jGraph
-from langchain_openai import OpenAIEmbeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.graphs import (  # type: ignore
+    Neo4jGraph,  # pyright: ignore[reportMissingImports]
+)
+from langchain_openai import OpenAIEmbeddings  # type: ignore
+from langchain_text_splitters import RecursiveCharacterTextSplitter  # type: ignore
 
 # Configura o logging
 logging.basicConfig(
@@ -429,29 +431,24 @@ class DataIngestion:
         logging.info(f"Documentos divididos em {len(chunks)} trechos.")  # noqa: G004, LOG015
 
         logging.info("Ingerindo chunks no Neo4j...")  # noqa: LOG015
-
-        # Prepara os dados dos chunks para ingestão em lote
-        chunk_records = []
         for chunk in chunks:
-            chunk_records.append(
-                {
-                    "source_doc": chunk.metadata.get("source", "desconhecido").split(
-                        os.sep
-                    )[-1],
-                    "texto": chunk.page_content,
-                    "page": chunk.metadata.get("page", 0),
-                }
-            )
+            # Extrai metadados e texto do chunk
+            source_doc = chunk.metadata.get("source", "desconhecido").split(os.sep)[-1]  # noqa: PTH206
+            page = chunk.metadata.get("page", 0)
 
-        # Ingestão em lote dos chunks
-        ingest_chunks_query = """
-        UNWIND $records AS record
-        MERGE (m:Manual {nome: record.source_doc})
-        CREATE (c:Chunk {texto: record.texto, pagina: record.page})
-        MERGE (c)-[:PARTE_DE]->(m)
-        """
-        if chunk_records:
-            self.graph.query(ingest_chunks_query, params={"records": chunk_records})
+            # Cria nós :Manual e :Chunk e o relacionamento entre eles
+            self.graph.query(
+                """
+                MERGE (m:Manual {nome: $source_doc})
+                CREATE (c:Chunk {texto: $texto, pagina: $page})
+                MERGE (c)-[:PARTE_DE]->(m)
+                """,
+                params={
+                    "source_doc": source_doc,
+                    "texto": chunk.page_content,
+                    "page": page,
+                },
+            )
 
         logging.info("Criação de nós e relacionamentos concluída.")  # noqa: LOG015
 

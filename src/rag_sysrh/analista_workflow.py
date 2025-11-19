@@ -2,14 +2,20 @@ import logging
 import os
 from typing import TypedDict
 
-from langchain_core.exceptions import OutputParserException
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.tools import Tool
-from langchain_neo4j import Neo4jGraph
-from langchain_openai import ChatOpenAI
-from langgraph.graph import END, StateGraph
-from pydantic import BaseModel, Field
+from langchain_core.exceptions import (  # type: ignore
+    OutputParserException,  # pyright: ignore[reportMissingImports]
+)
+from langchain_core.output_parsers import (  # type: ignore
+    StrOutputParser,  # pyright: ignore[reportMissingImports]
+)
+from langchain_core.prompts import (  # type: ignore
+    ChatPromptTemplate,  # pyright: ignore[reportMissingImports]
+)
+from langchain_core.tools import Tool  # type: ignore
+from langchain_neo4j import Neo4jGraph  # type: ignore
+from langchain_openai import ChatOpenAI  # type: ignore
+from langgraph.graph import END, StateGraph  # type: ignore
+from pydantic import BaseModel, Field  # type: ignore
 
 # Configura o logging
 logging.basicConfig(
@@ -319,23 +325,6 @@ class AnalistaWorkflow:
 
         return workflow.compile()
 
-    def _enrich_and_persist_report(
-        self, solicitacao: str, relatorio: RelatorioAnalise | None
-    ) -> RelatorioAnalise | None:
-        """Enriquece o relatório com o ID da solicitação e persiste os detalhes evolutivos."""
-        if not relatorio:
-            return None
-
-        solicitacao_id = self._buscar_solicitacao_por_texto(solicitacao)
-        relatorio.solicitacao_id = solicitacao_id
-
-        # Se a análise gerou detalhes de uma demanda evolutiva, salva no grafo.
-        if relatorio.detalhes_evolutiva and solicitacao_id != -1:
-            self._registrar_detalhes_evolutiva(
-                solicitacao_id, relatorio.detalhes_evolutiva
-            )
-        return relatorio
-
     def run(self, solicitacao: str) -> RelatorioAnalise:
         """Executa o workflow completo para uma dada solicitação."""
         # Inicializa o estado com todas as chaves para satisfazer o type checker.
@@ -351,7 +340,24 @@ class AnalistaWorkflow:
         final_state = self.graph.invoke(initial_state)
         relatorio_final = final_state.get("relatorio_final")
 
-        return self._enrich_and_persist_report(solicitacao, relatorio_final)
+        # Busca o ID da solicitação no grafo para enriquecer o relatório
+        solicitacao_id = self._buscar_solicitacao_por_texto(solicitacao)
+
+        if relatorio_final:
+            # Adiciona o ID encontrado ao objeto de relatório
+            relatorio_final.solicitacao_id = solicitacao_id
+
+        # Se a análise gerou detalhes de uma demanda evolutiva, salva no grafo.
+        if (
+            relatorio_final
+            and relatorio_final.detalhes_evolutiva
+            and solicitacao_id != -1
+        ):
+            self._registrar_detalhes_evolutiva(
+                solicitacao_id, relatorio_final.detalhes_evolutiva
+            )
+
+        return relatorio_final
 
 
 if __name__ == "__main__":
