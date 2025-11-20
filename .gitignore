@@ -1,29 +1,26 @@
-# Python-generated files
+# Byte-compiled / optimized / C extensions
 __pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+*.py[cod]
+*.so
 
-# Virtual environments
+# Caches de ferramentas de desenvolvimento
+.pyright_cache/
+.pytest_cache/
+.mypy_cache/
+
+# Configurações de IDE
+.vscode/
+.idea/
+
+# Ambientes Virtuais
 .venv
 venv/
 env/
-/.env
-# Caches do Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
+.env
+.env/
 
-# Configurações do VSCode
-.vscode/
-
-# Cache do Pylance/Pyright
-.pyright_cache/
-
-# Arquivos de build e distribuição
+# Arquivos de dependências e build
+wheels/
 build/
 dist/
 *.egg-info/
