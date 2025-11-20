@@ -397,12 +397,19 @@ class DataIngestion:
         except Exception as e:
             logging.exception("Falha ao ingerir casos de teste: %s", e)  # noqa: LOG015, TRY401
 
-    def run_ingestion(self) -> None:
+    def run_ingestion(self, clear_db: bool = True) -> None:
         """
         Executa o pipeline completo de ingestão de dados.
+
+        Args:
+            clear_db (bool): Se True, apaga todos os dados do banco antes de ingerir.
+                             Se False, apenas adiciona/atualiza (MERGE).
         """
-        logging.info("Limpando banco de dados Neo4j existente...")  # noqa: LOG015
-        self.graph.query("MATCH (n) DETACH DELETE n")
+        if clear_db:
+            logging.info("Limpando banco de dados Neo4j existente...")  # noqa: LOG015
+            self.graph.query("MATCH (n) DETACH DELETE n")
+        else:
+            logging.info("Modo incremental: Mantendo dados existentes no Neo4j.")
 
         # Fase 1: Ingestão de dados estruturados (Solicitações, Clientes, etc.)
         self._load_and_ingest_structured_data()

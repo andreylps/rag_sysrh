@@ -126,16 +126,24 @@ class AgentePlanejamentoRCM(BaseAgent):
     def salvar_plano_rcm(self, plano: PlanoRCM, solicitacao_id: int) -> None:
         """
         Salva o PlanoRCM gerado como um nó no Neo4j e o conecta à Solicitação original.
+        O plano é salvo inicialmente como 'Pendente Aprovação' e com a label :PlanoRCM.
+        Ele só se torna uma :RCM oficial após aprovação.
         """
         logging.info(f"Salvando plano da RCM '{plano.titulo_rcm}' no grafo...")
 
         # Converte o objeto Pydantic em um dicionário para o Neo4j
         plano_props = plano.model_dump()
 
+        # Define status inicial e ID se não tiver (embora o modelo não tenha ID, o nó precisa)
+        import uuid
+
+        plano_props["id"] = str(uuid.uuid4())
+        plano_props["status"] = "Pendente Aprovação"
+
         query = """
         MATCH (s:Solicitacao {id: $solicitacao_id})
-        // Cria um nó :PlanoRCM com as propriedades do plano
-        CREATE (p:PlanoRCM $plano_props)
+        // Cria um nó :PlanoRCM com as propriedades do plano e label de pendente
+        CREATE (p:PlanoRCM:RCM_Pendente $plano_props)
         // Adiciona um timestamp de criação
         SET p.dataCriacao = datetime()
         // Conecta o plano à solicitação que o originou
@@ -146,7 +154,36 @@ class AgentePlanejamentoRCM(BaseAgent):
             query,
             params={"solicitacao_id": solicitacao_id, "plano_props": plano_props},
         )
-        logging.info("Plano de RCM salvo e conectado à solicitação no grafo.")
+        logging.info("Plano de RCM salvo como Pendente Aprovação.")
+
+    def aprovar_plano_rcm(self, titulo_rcm: str) -> None:
+        """
+        Aprova um PlanoRCM pendente, transformando-o em uma RCM oficial.
+        Isso envolve:
+        1. Mudar o status para 'Aberto'.
+        2. Adicionar a label :RCM.
+        3. Remover a label :RCM_Pendente.
+        """
+        logging.info(f"Aprovando plano de RCM '{titulo_rcm}'...")
+
+        query = """
+        MATCH (p:PlanoRCM {titulo_rcm: $titulo})
+        WHERE 'RCM_Pendente' IN labels(p)
+        SET p:RCM, p.status = 'Aberto'
+        REMOVE p:RCM_Pendente
+        RETURN p.id as id
+        """
+
+        result = self.graph.query(query, params={"titulo": titulo_rcm})
+
+        if result:
+            logging.info(
+                f"RCM '{titulo_rcm}' aprovada e oficializada com sucesso (ID: {result[0]['id']})."
+            )
+        else:
+            logging.warning(
+                f"Não foi possível aprovar a RCM '{titulo_rcm}'. Verifique se ela existe e está pendente."
+            )
 
     def formatar_plano_para_markdown(self, plano: PlanoRCM) -> str:
         """Formata o objeto PlanoRCM em uma string Markdown com layout profissional."""

@@ -42,6 +42,19 @@ class AvaliacaoEntrega(BaseModel):
     )
 
 
+class AvaliacaoPrazo(BaseModel):
+    """Modelo de dados para a avaliação de prazo de uma RCM."""
+
+    no_prazo: bool = Field(
+        description="Indica se a RCM foi entregue dentro do prazo (True/False)."
+    )
+    dias_atraso: int = Field(
+        description="Número de dias de atraso (0 se entregue no prazo ou adiantado)."
+    )
+    data_prevista: str = Field(description="Data prevista para entrega (ISO 8601).")
+    data_real: str = Field(description="Data real de conclusão (ISO 8601).")
+
+
 class AgenteQualidade(BaseAgent):
     """
     Agente autônomo para avaliar a qualidade das entregas (RCMs)
@@ -83,6 +96,21 @@ class AgenteQualidade(BaseAgent):
                 "justificativa": avaliacao.justificativa,
             },
         )
+
+        # Lógica de Etiquetagem para Revisão (Human-in-the-Loop)
+        if not avaliacao.conformidade:
+            logging.warning(f"RCM {rcm_id} não conforme. Marcando para revisão.")
+            self.graph.query(
+                "MATCH (rcm:RCM {id: $rcm_id}) SET rcm:NeedsRevision",
+                params={"rcm_id": rcm_id},
+            )
+        else:
+            # Se estiver conforme, remove a flag de revisão caso exista (correção realizada)
+            self.graph.query(
+                "MATCH (rcm:RCM {id: $rcm_id}) REMOVE rcm:NeedsRevision",
+                params={"rcm_id": rcm_id},
+            )
+
         logging.info(f"Análise de conformidade registrada para a RCM {rcm_id}.")
 
     def executar_ciclo_conformidade_rcm(self, limit: int = 5) -> None:
@@ -241,6 +269,93 @@ class AgenteQualidade(BaseAgent):
         )
         logging.info(f"Avaliação de entrega para RCM {rcm_id} registrada com sucesso.")
 
+    def _registrar_avaliacao_prazo(
+        self, rcm_id: str, avaliacao: AvaliacaoPrazo
+    ) -> None:
+        """Salva a avaliação de prazo da RCM no grafo."""
+        query = """
+        MATCH (rcm:RCM {id: $rcm_id})
+        CREATE (ap:AvaliacaoPrazo {
+            id: randomUUID(),
+            no_prazo: $no_prazo,
+            dias_atraso: $dias_atraso,
+            data_prevista: $data_prevista,
+            data_real: $data_real,
+            dataAvaliacao: datetime()
+        })
+        MERGE (rcm)-[:AVALIADA_POR_PRAZO]->(ap)
+        """
+        self.graph.query(
+            query,
+            params={
+                "rcm_id": rcm_id,
+                "no_prazo": avaliacao.no_prazo,
+                "dias_atraso": avaliacao.dias_atraso,
+                "data_prevista": avaliacao.data_prevista,
+                "data_real": avaliacao.data_real,
+            },
+        )
+        logging.info(f"Avaliação de prazo registrada para a RCM {rcm_id}.")
+
+    def executar_ciclo_prazo_rcm(self) -> None:
+        """
+        Verifica RCMs concluídas e compara a data real com a prevista.
+        """
+        logging.info("Iniciando ciclo de verificação de prazos de RCM.")
+
+        # Busca RCMs com datas definidas e que ainda não foram avaliadas por prazo
+        query = """
+        MATCH (rcm:RCM)
+        WHERE rcm.data_prevista_entrega IS NOT NULL 
+          AND rcm.data_conclusao_real IS NOT NULL
+          AND NOT (rcm)-[:AVALIADA_POR_PRAZO]->(:AvaliacaoPrazo)
+        RETURN rcm.id AS rcm_id, rcm.data_prevista_entrega AS prevista, rcm.data_conclusao_real AS real
+        LIMIT 50
+        """
+        rcms = self.graph.query(query)
+
+        if not rcms:
+            logging.info("Nenhuma RCM pendente de análise de prazo encontrada.")
+            return
+        from datetime import datetime
+
+        for rcm in rcms:
+            try:
+                # As datas no Neo4j estão vindo como strings 'DD/MM/YYYY HH:MM'
+                prevista_raw = str(rcm["prevista"])
+                real_raw = str(rcm["real"])
+
+                # Tenta limpar e parsear
+                # Remove possíveis espaços extras
+                prevista_str = prevista_raw.strip()
+                real_str = real_raw.strip()
+
+                # Formato observado: 13/02/2025 00:00
+                dt_prevista = datetime.strptime(prevista_str, "%d/%m/%Y %H:%M")
+                dt_real = datetime.strptime(real_str, "%d/%m/%Y %H:%M")
+
+                dias_atraso = (dt_real - dt_prevista).days
+                no_prazo = dias_atraso <= 0
+                dias_atraso = max(0, dias_atraso)  # Não reportar atraso negativo
+
+                avaliacao = AvaliacaoPrazo(
+                    no_prazo=no_prazo,
+                    dias_atraso=dias_atraso,
+                    data_prevista=prevista_str,
+                    data_real=real_str,
+                )
+
+                self._registrar_avaliacao_prazo(rcm["rcm_id"], avaliacao)
+
+            except ValueError as ve:
+                logging.error(
+                    f"Erro de formato de data na RCM {rcm['rcm_id']}: {ve}. Esperado DD/MM/YYYY HH:MM."
+                )
+            except Exception as e:
+                logging.error(f"Erro ao avaliar prazo da RCM {rcm['rcm_id']}: {e}")
+
+        logging.info("Ciclo de verificação de prazos finalizado.")
+
     def executar_ciclo_validacao_entrega(self) -> None:
         """
         Executa um ciclo completo de validação de entregas (RCMs)
@@ -292,6 +407,7 @@ class AgenteQualidade(BaseAgent):
         self,
         avaliacoes_conformidade: List[Dict[str, Any]],
         avaliacoes_entrega: List[Dict[str, Any]],
+        avaliacoes_prazo: List[Dict[str, Any]],
     ) -> str:
         """
         Usa um LLM para gerar um relatório gerencial consolidado em Markdown.
@@ -311,6 +427,12 @@ class AgenteQualidade(BaseAgent):
                 for item in avaliacoes_entrega
             ]
         )
+        prazo_str = "\n".join(
+            [
+                f"- RCM ID: {item.get('rcm_id')}, Título: {item.get('rcm_titulo')}, No Prazo: {item.get('avaliacao', {}).get('no_prazo', 'N/A')}, Dias Atraso: {item.get('avaliacao', {}).get('dias_atraso', 'N/A')}, Prevista: {item.get('avaliacao', {}).get('data_prevista', 'N/A')}, Real: {item.get('avaliacao', {}).get('data_real', 'N/A')}"
+                for item in avaliacoes_prazo
+            ]
+        )
 
         prompt = ChatPromptTemplate.from_template(
             """Você é um Gerente de QA Sênior. Sua tarefa é criar um relatório executivo em Markdown com base nos resultados dos ciclos de análise do Agente de Qualidade.
@@ -320,19 +442,26 @@ class AgenteQualidade(BaseAgent):
 
             **Dados da Análise de Qualidade de Entregas (baseado em Casos de Teste):**
             {entrega_str}
+            
+            **Dados da Análise de Prazos de RCMs:**
+            {prazo_str}
 
             **Instruções para o Relatório:**
             1.  **Título Principal:** Comece com `# Relatório do Ciclo de Qualidade`.
-            2.  **Resumo Executivo:** Escreva um parágrafo inicial resumindo os principais achados do ciclo (quantas RCMs analisadas, quantos problemas encontrados, etc.).
+            2.  **Resumo Executivo:** Escreva um parágrafo inicial resumindo os principais achados do ciclo (quantas RCMs analisadas, quantos problemas encontrados, status geral de prazos, etc.).
             3.  **Seção de Análise de Conformidade:**
                 - Use o subtítulo `## 📋 Análise de Conformidade de RCMs`.
-                - Se houver RCMs não conformes, liste-as em uma subseção `### ⚠️ Pontos de Atenção`, usando bullet points. Para cada item, inclua o ID da RCM, a justificativa do problema e uma **Ação Recomendada** clara (ex: "Corrigir o título da RCM para incluir o ID da solicitação.").
+                - Se houver RCMs não conformes, liste-as em uma subseção `### ⚠️ Pontos de Atenção`, usando bullet points. Para cada item, inclua o ID da RCM, a justificativa do problema e uma **Ação Recomendada** clara.
                 - Se tudo estiver conforme, apenas mencione: "✅ Todas as RCMs analisadas estão em conformidade com os padrões."
             4.  **Seção de Análise de Qualidade de Entregas:**
                 - Use o subtítulo `## 📦 Análise de Qualidade de Entregas`.
-                - Se houver entregas com status 'REPROVADO' ou 'PENDENTE', liste-as em uma subseção `### ⚠️ Pontos de Atenção`. Para cada item, inclua o ID da RCM, o resumo do problema e a **Ação Recomendada** (ex: "Investigar caso de teste reprovado e acionar a equipe de desenvolvimento.").
+                - Se houver entregas com status 'REPROVADO' ou 'PENDENTE', liste-as em uma subseção `### ⚠️ Pontos de Atenção`. Para cada item, inclua o ID da RCM, o resumo do problema e a **Ação Recomendada**.
                 - Se todas as entregas estiverem 'APROVADO', mencione: "✅ Todas as entregas analisadas foram aprovadas nos testes."
-            5.  **Conclusão:** Finalize com um breve parágrafo de conclusão sobre a saúde geral da qualidade no ciclo atual.
+            5.  **Seção de Análise de Prazos:**
+                - Use o subtítulo `## ⏱️ Análise de Prazos`.
+                - Se houver RCMs com atraso (No Prazo = False), liste-as em uma subseção `### ⚠️ Entregas em Atraso`. Para cada item, mostre o ID, Título, Dias de Atraso e datas.
+                - Se todas estiverem no prazo, mencione: "✅ Todas as entregas analisadas foram realizadas dentro do prazo."
+            6.  **Conclusão:** Finalize com um breve parágrafo de conclusão sobre a saúde geral da qualidade no ciclo atual.
 
             Se uma das seções não tiver dados, apenas escreva "Nenhuma nova análise realizada neste ciclo." para essa seção.
             """
@@ -340,7 +469,11 @@ class AgenteQualidade(BaseAgent):
 
         chain = prompt | self.llm | StrOutputParser()
         return chain.invoke(
-            {"conformidade_str": conformidade_str, "entrega_str": entrega_str}
+            {
+                "conformidade_str": conformidade_str,
+                "entrega_str": entrega_str,
+                "prazo_str": prazo_str,
+            }
         )
 
     def executar_ciclo_gerencial(self, status_callback: Any = None) -> str:  # noqa: C901
@@ -372,14 +505,29 @@ class AgenteQualidade(BaseAgent):
             "MATCH (rcm:RCM)-[:AVALIADA_POR_QUALIDADE]->(a:AvaliacaoEntrega) RETURN rcm.id as rcm_id, rcm.titulo as rcm_title, a as avaliacao"
         )
 
+        # --- Coleta de Dados de Prazos ---
+        if status_callback:
+            status_callback("Executando análise de prazos de entregas...")
+        self.executar_ciclo_prazo_rcm()  # Executa e salva no grafo
+        # Busca os resultados para o relatório
+        avaliacoes_prazo_realizadas = self.graph.query(
+            "MATCH (rcm:RCM)-[:AVALIADA_POR_PRAZO]->(a:AvaliacaoPrazo) RETURN rcm.id as rcm_id, rcm.titulo as rcm_titulo, a as avaliacao"
+        )
+
         # --- Geração do Relatório Final ---
-        if not avaliacoes_conformidade_realizadas and not avaliacoes_entrega_realizadas:
+        if (
+            not avaliacoes_conformidade_realizadas
+            and not avaliacoes_entrega_realizadas
+            and not avaliacoes_prazo_realizadas
+        ):
             return "✅ Nenhuma nova RCM ou entrega encontrada para análise neste ciclo. Tudo em dia!"
 
         if status_callback:
             status_callback("Compilando relatório final...")
         return self._gerar_relatorio_gerencial(
-            avaliacoes_conformidade_realizadas, avaliacoes_entrega_realizadas
+            avaliacoes_conformidade_realizadas,
+            avaliacoes_entrega_realizadas,
+            avaliacoes_prazo_realizadas,
         )
 
 

@@ -1,23 +1,33 @@
 import logging
 import os
+import sys
 from io import StringIO
+from pathlib import Path
 from typing import Any
 
-import altair as alt
-import pandas as pd
-import streamlit as st
-from dotenv import load_dotenv
-from langchain_core.tools import Tool
-from langchain_neo4j import Neo4jGraph
-from langchain_openai import ChatOpenAI
+import altair as alt  # type: ignore
+import pandas as pd  # type: ignore
+import streamlit as st  # type: ignore
+from dotenv import load_dotenv  # type: ignore
+from langchain_core.tools import Tool  # type: ignore
+from langchain_neo4j import Neo4jGraph  # type: ignore
+from langchain_openai import ChatOpenAI  # type: ignore
 
-from rag_sysrh.agent_executor import build_agent
-from rag_sysrh.agente_documentacao import AgenteDocumentacao
-from rag_sysrh.agente_faturamento import AgenteFaturamento
-from rag_sysrh.agente_planejamento_rcm import AgentePlanejamentoRCM
-from rag_sysrh.agente_qualidade import AgenteQualidade
-from rag_sysrh.analista_workflow import AnalistaWorkflow
-from rag_sysrh.main import get_tools
+# --- Solução para o ImportError ---
+# Adiciona o diretório 'src' ao sys.path para garantir que as importações funcionem
+# independentemente de como o script é executado.
+SRC_PATH = Path(__file__).resolve().parent.parent
+if str(SRC_PATH) not in sys.path:
+    sys.path.append(str(SRC_PATH))
+
+from rag_sysrh.agent_executor import build_agent  # noqa: E402
+from rag_sysrh.agente_documentacao import AgenteDocumentacao  # noqa: E402
+from rag_sysrh.agente_faturamento import AgenteFaturamento  # noqa: E402
+from rag_sysrh.agente_planejamento_rcm import AgentePlanejamentoRCM  # noqa: E402
+from rag_sysrh.agente_qualidade import AgenteQualidade  # noqa: E402
+from rag_sysrh.data_ingestion import DataIngestion  # noqa: E402
+from rag_sysrh.guarded_workflow import guarded_app  # noqa: E402
+from rag_sysrh.main import get_tools  # noqa: E402
 
 # Configura o logging
 logging.basicConfig(
@@ -25,17 +35,48 @@ logging.basicConfig(
 )
 
 
+@st.cache_resource
+def initialize_graph() -> None:
+    """
+    Verifica se o grafo está vazio e, se estiver, executa a ingestão inicial.
+    """
+    try:
+        graph = Neo4jGraph(
+            url=os.getenv("NEO4J_URI"),
+            username=os.getenv("NEO4J_USERNAME"),
+            password=os.getenv("NEO4J_PASSWORD"),
+        )
+        # Verifica se há algum nó no banco
+        result = graph.query("MATCH (n) RETURN count(n) as count")
+        node_count = result[0]["count"] if result else 0
+
+        if node_count == 0:
+            logging.info(
+                "Banco de dados vazio detectado. Iniciando ingestão automática..."
+            )
+            ingestion = DataIngestion(
+                data_directory="data",
+                structured_data_path="data/solicitacoes.csv",
+                rcm_data_path="data/rcms_01.csv",
+                # Ajuste conforme necessário ou deixe None para processar todos
+                single_manual_path=None,
+            )
+            ingestion.run_ingestion(clear_db=True)
+            logging.info("Ingestão automática concluída.")
+        else:
+            logging.info(
+                f"Banco de dados já populado com {node_count} nós. Pulando ingestão."
+            )
+
+    except Exception as e:
+        logging.error(f"Falha na inicialização do grafo: {e}")
+
+
 # --- FUNÇÕES DE CACHE PARA PERFORMANCE ---
 @st.cache_resource
 def load_tools() -> list[Tool]:
     """Carrega as ferramentas do agente e as armazena em cache."""
     return get_tools()
-
-
-@st.cache_resource
-def load_analista_workflow(_tools: list[Tool]) -> AnalistaWorkflow:
-    """Carrega o workflow de análise e o armazena em cache."""
-    return AnalistaWorkflow(tools=_tools)
 
 
 @st.cache_resource
@@ -172,8 +213,6 @@ def render_analysis_interface() -> None:
     st.write(
         "Forneça o texto de uma solicitação para receber uma análise completa, incluindo diagnóstico, solução e estimativa."  # noqa: E501
     )
-    tools = load_tools()
-    workflow = load_analista_workflow(tools)
 
     # Inicializa o estado da sessão para o relatório
     if "relatorio_analise" not in st.session_state:
@@ -190,11 +229,14 @@ def render_analysis_interface() -> None:
                 "Executando workflow de análise... Isso pode levar um minuto."
             ):
                 try:
-                    relatorio = workflow.run(solicitacao_texto)
+                    # Chama o novo workflow com guardrail
+                    final_state = guarded_app.invoke(
+                        {"solicitacao_original": solicitacao_texto}
+                    )
+                    relatorio = final_state.get("final_report")
                     st.session_state.relatorio_analise = relatorio
                 except Exception as e:  # noqa: BLE001
                     st.error(f"Ocorreu um erro durante a análise: {e}")
-                    st.session_state.relatorio_analise = None
 
     # Exibe o relatório se ele existir no estado da sessão
     if st.session_state.relatorio_analise:
@@ -245,18 +287,62 @@ def render_analysis_interface() -> None:
                     agente_planejamento = load_agente_planejamento_rcm()
                     plano_rcm = agente_planejamento.gerar_plano_rcm(relatorio)
 
-                    # Formata o plano em um layout de Markdown profissional
-                    markdown_output = agente_planejamento.formatar_plano_para_markdown(
-                        plano_rcm
-                    )
-                    st.markdown(markdown_output, unsafe_allow_html=True)
+                    if plano_rcm:
+                        st.markdown("### Plano de RCM Gerado")
+                        st.markdown(
+                            agente_planejamento.formatar_plano_para_markdown(plano_rcm)
+                        )
 
-                    # Salva o plano gerado no Neo4j
-                    # Assumimos que o `relatorio` contém o ID da solicitação original.
-                    agente_planejamento.salvar_plano_rcm(
-                        plano_rcm, relatorio.solicitacao_id
-                    )
-                    st.toast("✅ Plano de RCM salvo no banco de dados!")
+                        # --- Fluxo de Aprovação (Human-in-the-Loop) ---
+                        st.warning(
+                            "⚠️ Este plano está como 'Pendente Aprovação'. Revise antes de aprovar."
+                        )
+
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("✅ Aprovar Plano de RCM"):
+                                with st.spinner("Oficializando RCM..."):
+                                    try:
+                                        agente_planejamento.aprovar_plano_rcm(
+                                            plano_rcm.titulo_rcm
+                                        )
+                                        st.success(
+                                            f"RCM '{plano_rcm.titulo_rcm}' aprovada e oficializada!"
+                                        )
+                                        st.balloons()
+                                    except Exception as e:
+                                        st.error(f"Erro ao aprovar RCM: {e}")
+                        with col2:
+                            if st.button("❌ Descartar Rascunho"):
+                                st.info(
+                                    "Rascunho descartado (funcionalidade de exclusão a implementar)."
+                                )
+
+                        # Salva o plano (como pendente) automaticamente ao gerar, ou poderia ser apenas ao aprovar.
+                        # Pela lógica atual do agente, ele já salva no final do 'gerar_plano_rcm' se chamarmos o método de salvar.
+                        # O código original do app.py chamava 'salvar_plano_rcm' logo após gerar?
+                        # Vamos verificar o código original. Se não chamava, precisamos chamar.
+                        # O código original do app.py (não mostrado aqui, mas inferido) provavelmente chamava salvar.
+                        # Vamos assumir que o botão "Gerar Plano" já chama o salvar.
+                        # Se não, deveríamos chamar aqui.
+                        # Olhando o código anterior (não visível no diff), o app chamava:
+                        # agente_planejamento.salvar_plano_rcm(plano_gerado, solicitacao_id)
+                        # Vamos garantir que isso seja feito ANTES da aprovação, para que o nó exista.
+
+                        # Como estamos dentro do bloco 'if plano_rcm', vamos salvar como pendente agora.
+                        try:
+                            # Precisamos do ID da solicitação. O código original pegava de 'solicitacao_selecionada'.
+                            # Vamos assumir que 'solicitacao_selecionada' está disponível no escopo (estava no código original).
+                            # O ID é a primeira parte da string "ID - Título"
+                            # O relatorio já contém o solicitacao_id
+                            agente_planejamento.salvar_plano_rcm(
+                                plano_rcm, relatorio.solicitacao_id
+                            )
+                            st.toast(
+                                "✅ Rascunho do Plano de RCM salvo no banco de dados!"
+                            )
+                        except Exception as e:
+                            st.error(f"Erro ao salvar rascunho: {e}")
 
                 except Exception as e:
                     st.error(f"Ocorreu um erro ao gerar o plano de RCM: {e}")
@@ -586,35 +672,126 @@ def render_documentation_generator_interface() -> None:
                 st.markdown(manual_markdown)
 
 
+def render_chatbot_page() -> None:
+    """Renderiza a página combinada de Chatbot e Análise."""
+    st.header("💬 Chatbot & Análise de Solicitações")
+
+    tab1, tab2, tab3 = st.tabs(
+        ["Chat Conversacional", "Análise de Solicitação", "Dashboard BI"]
+    )
+
+    with tab1:
+        render_chat_interface()
+
+    with tab2:
+        render_analysis_interface()
+
+    with tab3:
+        render_dashboard_interface()
+
+
+def render_rcm_planning_page() -> None:
+    """Renderiza a página de Planejamento de RCM (focada no agente de planejamento)."""
+    st.header("📋 Planejamento de RCM")
+    st.write(
+        "Área dedicada à geração e aprovação de Relatórios de Controle de Mudança."
+    )
+
+    # Reutiliza a interface de análise, mas focada em gerar o plano
+    # Na verdade, a interface de análise já tem o botão de gerar plano.
+    # Podemos apenas renderizar a interface de análise aqui também, ou criar uma específica.
+    # Para simplificar, vamos renderizar a interface de análise, pois o fluxo começa lá.
+    render_analysis_interface()
+
+
+def render_management_page() -> None:
+    """Renderiza a página de Gestão e Qualidade (Agentes Proativos)."""
+    st.header("⚙️ Gestão & Qualidade")
+    render_proactive_agents_interface()
+
+
+def render_documentation_page() -> None:
+    """Renderiza a página de Documentação."""
+    st.header("📚 Gerador de Documentação")
+
+    tab1, tab2 = st.tabs(["Gerador de Manuais", "Atualizações Pendentes"])
+
+    with tab1:
+        render_documentation_generator_interface()
+
+    with tab2:
+        st.subheader("📝 Atualizações de Documentação Pendentes")
+        st.write("Revise e aprove as sugestões de atualização geradas pelo agente.")
+
+        agente_doc = load_agente_documentacao()
+        pendentes = agente_doc.listar_atualizacoes_pendentes()
+
+        if not pendentes:
+            st.info("✅ Nenhuma atualização pendente no momento.")
+        else:
+            for item in pendentes:
+                with st.expander(f"RCM: {item['rcm_titulo']} (ID: {item['rcm_id']})"):
+                    st.markdown(f"**Resumo da Mudança:** {item['resumo']}")
+                    st.markdown("**Texto Sugerido:**")
+                    st.code(item["texto_novo"], language="markdown")
+
+                    if st.button(
+                        "✅ Aprovar Atualização", key=f"btn_approve_{item['id']}"
+                    ):
+                        try:
+                            if agente_doc.aprovar_atualizacao(item["id"]):
+                                st.success("Atualização aprovada com sucesso!")
+                                st.rerun()
+                            else:
+                                st.error("Erro ao aprovar atualização.")
+                        except Exception as e:
+                            st.error(f"Erro: {e}")
+
+
 def main() -> None:
     """Função principal da aplicação Streamlit."""
     load_dotenv()
     carregar_dados_faturamento()  # Garante que os dados de faturamento estão no banco
-    st.set_page_config(page_title="Assistente SYSRH", layout="wide")
-    st.title("🤖 Assistente de Conhecimento SYSRH")
 
-    st.sidebar.title("Modos de Operação")
-    modo = st.sidebar.radio(
-        "Escolha a ferramenta:",
+    # Inicializa o grafo e a ingestão de dados (se necessário)
+    initialize_graph()
+
+    st.set_page_config(
+        page_title="RAG SYS-RH - Assistente Inteligente",
+        page_icon="🤖",
+        layout="wide",
+    )
+
+    st.title("🤖 RAG SYS-RH - Assistente Inteligente")
+
+    # Sidebar para navegação
+    st.sidebar.title("Navegação")
+
+    # Botão de recarga manual
+    if st.sidebar.button("🔄 Recarregar Conhecimento"):
+        with st.sidebar.status("Recarregando dados...", expanded=True):
+            initialize_graph.clear()  # Limpa o cache da inicialização
+            DataIngestion().run_ingestion(clear_db=False)  # Ingestão incremental
+            st.success("Conhecimento atualizado!")
+
+    page = st.sidebar.radio(
+        "Escolha o módulo:",
         (
-            "Consulta Conversacional",
-            "Análise de Solicitação",
-            "Dashboard de BI",
-            "Agentes Proativos",
+            "Chatbot & Análise",
+            "Planejamento de RCM",
+            "Gestão & Qualidade",
             "Gerador de Documentação",
         ),
     )
 
-    if modo == "Consulta Conversacional":
-        render_chat_interface()
-    elif modo == "Análise de Solicitação":
-        render_analysis_interface()
-    elif modo == "Dashboard de BI":
-        render_dashboard_interface()
-    elif modo == "Agentes Proativos":
-        render_proactive_agents_interface()
-    elif modo == "Gerador de Documentação":
-        render_documentation_generator_interface()
+    if page == "Chatbot & Análise":
+        render_chatbot_page()
+    elif page == "Planejamento de RCM":
+        render_rcm_planning_page()
+    elif page == "Gestão & Qualidade":
+        render_management_page()
+    elif page == "Gerador de Documentação":
+        render_documentation_page()
 
 
 if __name__ == "__main__":

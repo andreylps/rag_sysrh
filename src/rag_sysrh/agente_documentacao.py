@@ -98,13 +98,21 @@ class AgenteDocumentacao(BaseAgent):
         logging.info(  # noqa: LOG015
             f"Registrando atualização de documentação para o RCM ID {rcm_id}..."  # noqa: G004
         )
+
+        # Gera um ID único para a atualização
+        import uuid
+
+        atualizacao_id = str(uuid.uuid4())
+
         query = """
         MATCH (rcm:RCM {id: $rcm_id})
         MATCH (chunk:Chunk) WHERE id(chunk) = $chunk_id
         CREATE (ad:AtualizacaoDocumento {
+            id: $id,
             texto_atualizado: $texto_atualizado,
             resumo_da_mudanca: $resumo_da_mudanca,
-            data_geracao: datetime()
+            data_geracao: datetime(),
+            status: 'Pendente'
         })
         MERGE (rcm)-[:GEROU_ATUALIZACAO]->(ad)
         MERGE (ad)-[:ATUALIZA_CHUNK]->(chunk)
@@ -112,12 +120,38 @@ class AgenteDocumentacao(BaseAgent):
         self.graph.query(
             query,
             params={
+                "id": atualizacao_id,
                 "rcm_id": rcm_id,
                 "chunk_id": chunk_id,
                 "texto_atualizado": proposta.texto_atualizado,
                 "resumo_da_mudanca": proposta.resumo_da_mudanca,
             },
         )
+
+    def listar_atualizacoes_pendentes(self) -> List[Dict[str, Any]]:
+        """Lista todas as atualizações de documentação pendentes de aprovação."""
+        query = """
+        MATCH (ad:AtualizacaoDocumento {status: 'Pendente'})
+        MATCH (rcm:RCM)-[:GEROU_ATUALIZACAO]->(ad)
+        RETURN 
+            ad.id AS id,
+            ad.resumo_da_mudanca AS resumo,
+            ad.texto_atualizado AS texto_novo,
+            rcm.titulo AS rcm_titulo,
+            rcm.id AS rcm_id
+        """
+        return self.graph.query(query)
+
+    def aprovar_atualizacao(self, atualizacao_id: str) -> bool:
+        """Aprova uma atualização pendente."""
+        logging.info(f"Aprovando atualização {atualizacao_id}...")
+        query = """
+        MATCH (ad:AtualizacaoDocumento {id: $id})
+        SET ad.status = 'Aprovado', ad.data_aprovacao = datetime()
+        RETURN ad.id
+        """
+        result = self.graph.query(query, params={"id": atualizacao_id})
+        return len(result) > 0
 
     def _gerar_relatorio_documentacao(
         self, propostas_geradas: List[Dict[str, Any]]

@@ -1,16 +1,19 @@
 import json
 import logging
 import os
-import re
 
+import guardrails as gd
 from dotenv import load_dotenv
 from langchain_community.vectorstores import Neo4jVector
+from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.tools import Tool
 from langchain_neo4j import Neo4jGraph
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
+from rag_sysrh.guardrails.rail_specs import rail_spec_cypher
 
 # Configura o logging
 logging.basicConfig(
@@ -100,6 +103,7 @@ def get_tools() -> list[Tool]:  # noqa: C901, PLR0915
     )
 
     # --- FERRAMENTA 2: BUSCA FATORIAL (CYPHER) ---
+    # Atualizamos o prompt para solicitar JSON compatível com o Guardrail
     cypher_qa_prompt = ChatPromptTemplate.from_template(
         """Você é um expert em Neo4j. Sua tarefa é gerar uma consulta Cypher a partir de uma pergunta do usuário, usando o schema do grafo.
 Instruções importantes para a geração de Cypher:
@@ -116,38 +120,74 @@ Instruções importantes para a geração de Cypher:
      `MATCH (s:Solicitacao) WHERE s.title CONTAINS 'relatório' RETURN s.title AS titulo, s.texto_completo AS descricao`
      `UNION`
      `MATCH (r:RCM) WHERE r.titulo CONTAINS 'relatório' RETURN r.titulo AS titulo, r.id AS descricao`
+10. **Verificação de Status (Human-in-the-Loop):** Ao buscar RCMs, verifique se a label `:NeedsRevision` está presente. Se sim, inclua uma coluna 'status_revisao' com o valor 'EM REVISÃO' no retorno. Exemplo: `MATCH (r:RCM) RETURN r.titulo, CASE WHEN 'NeedsRevision' IN labels(r) THEN 'EM REVISÃO' ELSE 'OK' END AS status_revisao`.
 
 Schema:
 {schema}
 
 Pergunta: {input}
-Consulta Cypher:"""  # noqa: E501
-    )
-    # Cadeia LCEL para geração de Cypher
-    cypher_chain = (
-        {"schema": lambda _: graph.get_schema, "input": RunnablePassthrough()}
-        | cypher_qa_prompt
-        | llm
-        | StrOutputParser()
+
+Responda APENAS com o JSON no formato: {{"cypher": "SUA_CONSULTA_AQUI"}}
+"""  # noqa: E501
     )
 
     def run_qa_chain(question: str) -> str:
         try:
-            generated_cypher_raw = cypher_chain.invoke(question)
-            logging.info(f"Cypher Gerado: {generated_cypher_raw}")  # noqa: G004, LOG015
+            # 1. Construção manual do prompt (bypass API issue)
+            schema = graph.get_schema
+            formatted_prompt = cypher_qa_prompt.format(schema=schema, input=question)
 
-            # Usa regex para extrair de forma robusta a query de dentro do bloco de markdown  # noqa: E501
-            match = re.search(r"```cypher\n(.*?)\n```", generated_cypher_raw, re.DOTALL)
-            if match:
-                generated_cypher = match.group(1).strip()
-            else:
-                # Se o LLM não retornar o bloco de markdown, usa a resposta como está
-                generated_cypher = generated_cypher_raw.strip()
+            # 2. Chamada ao LLM
+            llm_response = llm.invoke([HumanMessage(content=formatted_prompt)]).content
 
+            # 3. Limpeza do Markdown (Robustez)
+            if "```json" in llm_response:
+                llm_response = llm_response.split("```json")[1].split("```")[0].strip()
+            elif "```" in llm_response:
+                llm_response = llm_response.split("```")[1].split("```")[0].strip()
+
+            # 4. Validação com Guardrails
+            guard = gd.Guard.from_rail_string(rail_spec_cypher)
+            validation_result = guard.parse(llm_response)
+
+            if not validation_result.validation_passed:
+                logging.warning(
+                    f"Falha na validação do Guardrail de Cypher: {validation_result}"
+                )
+                return "Desculpe, não consegui gerar uma consulta segura para sua pergunta."
+
+            generated_cypher = validation_result.validated_output.get("cypher")
+
+            if not generated_cypher:
+                return "Erro ao extrair a consulta Cypher."
+
+            # 5. Validação de Segurança Adicional (Hard Check)
+            forbidden_keywords = [
+                "CREATE",
+                "DELETE",
+                "DETACH",
+                "MERGE",
+                "SET",
+                "REMOVE",
+                "DROP",
+                "ALTER",
+            ]
+            upper_cypher = generated_cypher.upper()
+            for keyword in forbidden_keywords:
+                if keyword in upper_cypher:
+                    logging.warning(
+                        f"Consulta Cypher bloqueada por conter '{keyword}': {generated_cypher}"
+                    )
+                    return f"A consulta foi bloqueada por motivos de segurança (operação de escrita '{keyword}' detectada)."
+
+            logging.info(f"Cypher Validado e Seguro: {generated_cypher}")
+
+            # 6. Execução
             result = graph.query(generated_cypher)
             if not result:
                 return "Nenhum resultado encontrado para esta consulta."
             return json.dumps(result, ensure_ascii=False)
+
         except Exception as e:
             logging.exception("Falha na execução da consulta Cypher: %s", e)  # noqa: LOG015, TRY401
             return "Desculpe, ocorreu um erro ao buscar a informação no banco de dados."
@@ -166,41 +206,83 @@ Consulta Cypher:"""  # noqa: E501
 
 Instruções:
 1.  **Diferencie o tipo de solicitação:** O faturamento de chamados 'Evolutivo' ou 'Melhoria' é baseado em Pontos de Função (`s.effort`). O faturamento dos demais tipos ('Corretivo', 'Operacao', etc.) é baseado em horas (`s.horas_realizadas`).
-2.  **Custo por Ponto de Função:** Para chamados evolutivos, multiplique `s.effort` pelo valor do nó `:Custo {tipo: 'ponto_funcao'}`.
-3.  **Custo por Hora:** Para os demais chamados, multiplique `s.horas_realizadas` pelo valor do nó `:Custo {tipo: 'hora_desenvolvimento'}`.
-4.  **Exemplo para 'custo do chamado evolutivo 123'**: `MATCH (s:Solicitacao) WHERE s.id = 123 MATCH (c:Custo {tipo:'ponto_funcao'}) RETURN s.effort * c.valor AS custo_total`.
-5.  **Exemplo para 'custo do chamado corretivo 456'**: `MATCH (s:Solicitacao) WHERE s.id = 456 MATCH (c:Custo {tipo:'hora_desenvolvimento'}) RETURN s.horas_realizadas * c.valor AS custo_total`.
+2.  **Custo por Ponto de Função:** Para chamados evolutivos, multiplique `s.effort` pelo valor do nó `:Custo {{tipo: 'ponto_funcao'}}`.
+3.  **Custo por Hora:** Para os demais chamados, multiplique `s.horas_realizadas` pelo valor do nó `:Custo {{tipo: 'hora_desenvolvimento'}}`.
+4.  **Exemplo para 'custo do chamado evolutivo 123'**: `MATCH (s:Solicitacao) WHERE s.id = 123 MATCH (c:Custo {{tipo:'ponto_funcao'}}) RETURN s.effort * c.valor AS custo_total`.
+5.  **Exemplo para 'custo do chamado corretivo 456'**: `MATCH (s:Solicitacao) WHERE s.id = 456 MATCH (c:Custo {{tipo:'hora_desenvolvimento'}}) RETURN s.horas_realizadas * c.valor AS custo_total`.
 6.  Se a pergunta especificar um cliente, filtre as solicitações por esse cliente antes de somar os custos.
+7.  **Verificação de Inconsistência (Human-in-the-Loop):** Antes de calcular, verifique se a RCM tem a label `:DataInconsistency`. Se sim, retorne 'DADOS INCONSISTENTES' e não calcule o valor. Exemplo: `MATCH (s:Solicitacao) WHERE s.id = 123 RETURN CASE WHEN 'DataInconsistency' IN labels(s) THEN 'DADOS INCONSISTENTES' ELSE s.effort * 100 END AS custo`.
 Schema:
 {schema}
 
 Pergunta: {input}
-Consulta Cypher:"""  # noqa: E501
-    )
 
-    billing_cypher_chain = (
-        {"schema": lambda _: graph.get_schema, "input": RunnablePassthrough()}
-        | billing_cypher_prompt
-        | llm
-        | StrOutputParser()
+Responda APENAS com o JSON no formato: {{"cypher": "SUA_CONSULTA_AQUI"}}
+"""  # noqa: E501
     )
 
     def run_billing_chain(question: str) -> str:
         """Executa a cadeia de faturamento e retorna o resultado."""
-        generated_cypher_raw = billing_cypher_chain.invoke(question)
-        logging.info(f"Cypher de Faturamento Gerado: {generated_cypher_raw}")  # noqa: G004, LOG015
         try:
-            # Usa regex para extrair de forma robusta a query de dentro do bloco de markdown  # noqa: E501
-            match = re.search(r"```cypher\n(.*?)\n```", generated_cypher_raw, re.DOTALL)
-            if match:
-                generated_cypher = match.group(1).strip()
-            else:
-                generated_cypher = generated_cypher_raw.strip()
+            # 1. Construção manual do prompt
+            schema = graph.get_schema
+            formatted_prompt = billing_cypher_prompt.format(
+                schema=schema, input=question
+            )
 
+            # 2. Chamada ao LLM
+            llm_response = llm.invoke([HumanMessage(content=formatted_prompt)]).content
+
+            # 3. Limpeza do Markdown
+            if "```json" in llm_response:
+                llm_response = llm_response.split("```json")[1].split("```")[0].strip()
+            elif "```" in llm_response:
+                llm_response = llm_response.split("```")[1].split("```")[0].strip()
+
+            # 4. Validação com Guardrails
+            guard = gd.Guard.from_rail_string(rail_spec_cypher)
+            validation_result = guard.parse(llm_response)
+
+            if not validation_result.validation_passed:
+                logging.warning(
+                    f"Falha na validação do Guardrail de Faturamento: {validation_result}"
+                )
+                return (
+                    "Desculpe, não consegui gerar uma consulta de faturamento segura."
+                )
+
+            generated_cypher = validation_result.validated_output.get("cypher")
+
+            if not generated_cypher:
+                return "Erro ao extrair a consulta Cypher de faturamento."
+
+            # 5. Validação de Segurança Adicional
+            forbidden_keywords = [
+                "CREATE",
+                "DELETE",
+                "DETACH",
+                "MERGE",
+                "SET",
+                "REMOVE",
+                "DROP",
+                "ALTER",
+            ]
+            upper_cypher = generated_cypher.upper()
+            for keyword in forbidden_keywords:
+                if keyword in upper_cypher:
+                    logging.warning(
+                        f"Consulta Cypher de faturamento bloqueada: {generated_cypher}"
+                    )
+                    return "A consulta foi bloqueada por segurança."
+
+            logging.info(f"Cypher de Faturamento Validado: {generated_cypher}")
+
+            # 6. Execução
             result = graph.query(generated_cypher)
             if not result:
                 return "Nenhum resultado encontrado para esta consulta."
             return json.dumps(result, ensure_ascii=False)
+
         except Exception as e:
             logging.exception("Falha na execução da consulta de faturamento: %s", e)  # noqa: LOG015, TRY401
             return "Erro ao calcular o faturamento."

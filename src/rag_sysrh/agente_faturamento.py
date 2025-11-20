@@ -123,6 +123,26 @@ class AgenteFaturamento(BaseAgent):
 
         logging.info(f"Encontradas {len(entregas)} entregas para análise.")
         for entrega in entregas:
+            # --- SANITY CHECK (Human-in-the-Loop) ---
+            # Verifica se os dados fazem sentido antes de calcular.
+            # Um chamado concluído não pode ter 0 horas ou 0 pontos de função (se evolutivo).
+            pf = entrega.get("pontos_funcao", 0)
+            horas = entrega.get("horas_realizadas", 0)
+
+            if (
+                horas == 0 or (pf == 0 and horas > 0)
+            ):  # Assumindo que se tem horas, deveria ter PF se for evolutivo, ou vice-versa. Ajuste conforme regra de negócio.
+                # Simplificação: Se horas == 0 em um chamado concluído, é inconsistente.
+                if horas == 0:
+                    logging.warning(
+                        f"RCM {entrega['rcm_id']} tem 0 horas realizadas. Marcando como inconsistente."
+                    )
+                    self.graph.query(
+                        "MATCH (rcm:RCM {id: $rcm_id}) SET rcm:DataInconsistency",
+                        params={"rcm_id": entrega["rcm_id"]},
+                    )
+                    continue  # Pula para a próxima entrega
+
             # O método _analisar_rentabilidade agora recebe os custos lidos do arquivo
             analise = self._analisar_rentabilidade(
                 entrega["pontos_funcao"],
@@ -374,6 +394,15 @@ class AgenteFaturamento(BaseAgent):
             }
         )
 
+    def _buscar_rcms_inconsistentes(self) -> List[Dict[str, Any]]:
+        """Busca RCMs marcadas com :DataInconsistency."""
+        logging.info("Buscando RCMs com dados inconsistentes...")
+        query = """
+        MATCH (rcm:RCM:DataInconsistency)
+        RETURN rcm.id AS rcm_id, rcm.status AS status
+        """
+        return self.graph.query(query)
+
     def gerar_relatorio_completo(self) -> RelatorioFaturamento:
         """
         Orquestra a análise de faturamento, buscando dados históricos e futuros,
@@ -394,6 +423,7 @@ class AgenteFaturamento(BaseAgent):
         metas = self._buscar_metas_de_faturamento()
         faturamento_previsto = self._buscar_previsao_futura(meses=3)
         exemplos_calculo = self._buscar_exemplos_de_calculo()
+        inconsistentes = self._buscar_rcms_inconsistentes()
 
         # 2. Formatar os dados para o modelo Pydantic
         dados_compilados_predicao = []
@@ -423,6 +453,11 @@ class AgenteFaturamento(BaseAgent):
             logging.warning("Nenhum dado de faturamento encontrado para análise.")
             insights_historico = "Nenhum dado histórico de rentabilidade encontrado. Execute o ciclo de rentabilidade após marcar RCMs como 'Concluído' para gerar esses dados."
             analise_preditiva = "Nenhuma previsão de faturamento pôde ser gerada. Execute a 'Análise de Solicitação' para demandas do tipo 'Melhoria' para criar previsões de entrega."
+
+            if inconsistentes:
+                lista_inc = ", ".join([i["rcm_id"] for i in inconsistentes])
+                insights_historico += f"\n\n⚠️ **ATENÇÃO:** Foram encontradas RCMs com dados inconsistentes (ex: 0 horas): {lista_inc}. Verifique o cadastro."
+
             return RelatorioFaturamento(
                 dados_predicao_grafico=[],
                 dados_rentabilidade_grafico=[],
@@ -432,12 +467,32 @@ class AgenteFaturamento(BaseAgent):
 
         # Passo 3: Gerar a análise textual com o LLM.
         logging.info("Gerando insights e análise preditiva com o LLM...")
+
+        # Adiciona alerta de inconsistência aos dados passados ao LLM, se houver
+        dados_extras = {}
+        if inconsistentes:
+            lista_inc = ", ".join([i["rcm_id"] for i in inconsistentes])
+            dados_extras["alerta_inconsistencia"] = (
+                f"Existem RCMs ignoradas por dados inconsistentes: {lista_inc}."
+            )
+
+        # Modificamos a chamada para incluir o alerta no prompt (precisamos ajustar o prompt ou concatenar nos insights)
+        # Como o prompt é fixo no método _gerar_analise_preditiva_com_llm, vamos injetar essa informação
+        # concatenando com os exemplos ou criando um campo ad-hoc se fosse flexível.
+        # A melhor abordagem sem mudar a assinatura do método auxiliar é tratar o retorno.
+
         relatorio_completo = self._gerar_analise_preditiva_com_llm(
             dados_predicao=dados_compilados_predicao,
             dados_rentabilidade=dados_compilados_rentabilidade,
             metas=metas,
             exemplos_calculo=exemplos_calculo,
         )
+
+        # Injeta o alerta no texto gerado pelo LLM
+        if inconsistentes:
+            lista_inc = ", ".join([i["rcm_id"] for i in inconsistentes])
+            alerta = f"\n\n⚠️ **DADOS INCONSISTENTES:** As seguintes RCMs foram ignoradas na análise por conterem dados inválidos (ex: 0 horas trabalhadas): {lista_inc}."
+            relatorio_completo.insights_historico += alerta
 
         logging.info("Análise preditiva de faturamento concluída com sucesso.")
         # Garante que os dados para os gráficos sejam retornados corretamente
