@@ -25,6 +25,7 @@ from rag_sysrh.agente_documentacao import AgenteDocumentacao  # noqa: E402
 from rag_sysrh.agente_faturamento import AgenteFaturamento  # noqa: E402
 from rag_sysrh.agente_planejamento_rcm import AgentePlanejamentoRCM  # noqa: E402
 from rag_sysrh.agente_qualidade import AgenteQualidade  # noqa: E402
+from rag_sysrh.connectors import GitHubMockConnector  # noqa: E402
 from rag_sysrh.data_ingestion import DataIngestion  # noqa: E402
 from rag_sysrh.guarded_workflow import guarded_app  # noqa: E402
 from rag_sysrh.main import get_tools  # noqa: E402
@@ -303,13 +304,20 @@ def render_analysis_interface() -> None:
                             if st.button("✅ Aprovar Plano de RCM"):
                                 with st.spinner("Oficializando RCM..."):
                                     try:
-                                        agente_planejamento.aprovar_plano_rcm(
+                                        rcm_id = agente_planejamento.aprovar_plano_rcm(
                                             plano_rcm.titulo_rcm
                                         )
-                                        st.success(
-                                            f"RCM '{plano_rcm.titulo_rcm}' aprovada e oficializada!"
-                                        )
-                                        st.balloons()
+                                        if rcm_id:
+                                            st.success(
+                                                f"RCM '{plano_rcm.titulo_rcm}' aprovada e oficializada!"
+                                            )
+                                            st.balloons()
+                                            st.session_state.rcm_aprovada_id = rcm_id
+                                            st.session_state.rcm_aprovada_titulo = (
+                                                plano_rcm.titulo_rcm
+                                            )
+                                        else:
+                                            st.error("Não foi possível aprovar a RCM.")
                                     except Exception as e:
                                         st.error(f"Erro ao aprovar RCM: {e}")
                         with col2:
@@ -317,6 +325,32 @@ def render_analysis_interface() -> None:
                                 st.info(
                                     "Rascunho descartado (funcionalidade de exclusão a implementar)."
                                 )
+
+                        # Se a RCM acabou de ser aprovada (ou já estava no estado), mostra o botão de exportar
+                        if (
+                            st.session_state.get("rcm_aprovada_titulo")
+                            == plano_rcm.titulo_rcm
+                        ):
+                            st.markdown("---")
+                            st.success("✅ RCM Aprovada! Pronta para integração.")
+                            if st.button("📤 Exportar para GitHub (Simulado)"):
+                                with st.spinner("Exportando issue para o GitHub..."):
+                                    try:
+                                        connector = GitHubMockConnector()
+                                        ext_id = (
+                                            agente_planejamento.exportar_para_externo(
+                                                st.session_state.rcm_aprovada_id,
+                                                connector,
+                                            )
+                                        )
+                                        if ext_id:
+                                            st.success(
+                                                f"Issue criada com sucesso! [Acessar no GitHub]({ext_id})"
+                                            )
+                                        else:
+                                            st.error("Falha ao exportar RCM.")
+                                    except Exception as e:
+                                        st.error(f"Erro na exportação: {e}")
 
                         # Salva o plano (como pendente) automaticamente ao gerar, ou poderia ser apenas ao aprovar.
                         # Pela lógica atual do agente, ele já salva no final do 'gerar_plano_rcm' se chamarmos o método de salvar.

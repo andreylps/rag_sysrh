@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List
+from typing import List, Optional
 
 from docx import Document
 from langchain_core.prompts import ChatPromptTemplate
@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from rag_sysrh.analista_workflow import RelatorioAnalise
 from rag_sysrh.base_agent import BaseAgent
+from rag_sysrh.interfaces import ExternalConnector
 
 # Configura o logging
 logging.basicConfig(
@@ -156,7 +157,7 @@ class AgentePlanejamentoRCM(BaseAgent):
         )
         logging.info("Plano de RCM salvo como Pendente Aprovação.")
 
-    def aprovar_plano_rcm(self, titulo_rcm: str) -> None:
+    def aprovar_plano_rcm(self, titulo_rcm: str) -> Optional[str]:
         """
         Aprova um PlanoRCM pendente, transformando-o em uma RCM oficial.
         Isso envolve:
@@ -177,13 +178,51 @@ class AgentePlanejamentoRCM(BaseAgent):
         result = self.graph.query(query, params={"titulo": titulo_rcm})
 
         if result:
+            rcm_id = result[0]["id"]
             logging.info(
-                f"RCM '{titulo_rcm}' aprovada e oficializada com sucesso (ID: {result[0]['id']})."
+                f"RCM '{titulo_rcm}' aprovada e oficializada com sucesso (ID: {rcm_id})."
             )
+            return rcm_id
         else:
             logging.warning(
                 f"Não foi possível aprovar a RCM '{titulo_rcm}'. Verifique se ela existe e está pendente."
             )
+            return None
+
+    def exportar_para_externo(
+        self, rcm_id: str, connector: ExternalConnector
+    ) -> Optional[str]:
+        """
+        Exporta uma RCM aprovada para um sistema externo usando o conector fornecido.
+        """
+        logging.info(f"Exportando RCM {rcm_id} para sistema externo...")
+
+        # Busca os dados da RCM
+        query = """
+        MATCH (rcm:RCM {id: $id})
+        RETURN rcm
+        """
+        result = self.graph.query(query, params={"id": rcm_id})
+
+        if not result:
+            logging.error(f"RCM {rcm_id} não encontrada para exportação.")
+            return None
+
+        rcm_node = result[0]["rcm"]
+        # Converte o nó Neo4j para um dicionário Python puro
+        rcm_data = dict(rcm_node)
+
+        external_id = connector.create_issue(rcm_data)
+
+        # Registra o ID externo no grafo
+        update_query = """
+        MATCH (rcm:RCM {id: $id})
+        SET rcm.external_id = $ext_id, rcm.exported_at = datetime()
+        """
+        self.graph.query(update_query, params={"id": rcm_id, "ext_id": external_id})
+
+        logging.info(f"RCM {rcm_id} exportada com sucesso. ID Externo: {external_id}")
+        return external_id
 
     def formatar_plano_para_markdown(self, plano: PlanoRCM) -> str:
         """Formata o objeto PlanoRCM em uma string Markdown com layout profissional."""
