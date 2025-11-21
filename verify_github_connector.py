@@ -1,77 +1,73 @@
-import json
-import logging
 import os
+import sys
+from pathlib import Path
 
-from rag_sysrh.connectors import GitHubMockConnector
+from dotenv import load_dotenv
 
-# Configuração de Logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# Adiciona o diretório 'src' ao sys.path
+SRC_PATH = Path(__file__).resolve().parent / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.append(str(SRC_PATH))
+
+from rag_sysrh.github_connector import GitHubConnector
 
 
-def verify_github_connector():
-    """
-    Verifica a funcionalidade do GitHubMockConnector.
-    """
-    logging.info("--- INICIANDO VERIFICAÇÃO DO CONECTOR GITHUB ---")
+def verify_github_connection():
+    print("--- Verificando Conexão com GitHub ---")
+
+    # Carrega variáveis de ambiente
+    load_dotenv()
+
+    token = os.getenv("GITHUB_TOKEN")
+    repo_name = os.getenv("GITHUB_REPO_NAME")
+
+    if not token:
+        print("❌ GITHUB_TOKEN não encontrado no .env")
+        print("Por favor, adicione GITHUB_TOKEN=seu_token_aqui no arquivo .env")
+        return
+
+    if not repo_name:
+        print("⚠️ GITHUB_REPO_NAME não encontrado no .env")
+        print(
+            "Tentando usar um repositório padrão ou falhará se não definido na classe."
+        )
+        # Você pode definir um repo de teste aqui se quiser
+        # repo_name = "usuario/repo-teste"
+
+    print(f"Token detectado: {'*' * 5}{token[-4:] if token else 'Nenhum'}")
+    print(f"Repositório alvo: {repo_name}")
+
+    connector = GitHubConnector(token=token, repo_name=repo_name)
 
     try:
-        # 1. Instanciar o conector
-        mock_file = "data/external_system/test_github_mock.json"
-        connector = GitHubMockConnector(mock_file_path=mock_file)
-
-        # 2. Dados de teste (simulando uma RCM)
-        rcm_data = {
-            "titulo_rcm": "Implementar Dark Mode",
-            "descricao_tecnica_detalhada": "Adicionar suporte a tema escuro usando CSS variables.",
-            "objetivo_negocio": "Melhorar a experiência do usuário em ambientes com pouca luz.",
-            "estimativa_pontos_funcao": 5,
-            "prazo_dias_uteis": 3,
-            "criterios_de_aceite": [
-                "Botão de toggle no header",
-                "Persistência da preferência",
-            ],
-        }
-
-        # 3. Criar Issue
-        issue_url = connector.create_issue(rcm_data)
-        logging.info(f"Issue criada: {issue_url}")
-
-        # 4. Verificar se o arquivo foi criado e contém os dados
-        if os.path.exists(mock_file):
-            with open(mock_file, "r", encoding="utf-8") as f:
-                issues = json.load(f)
-
-            last_issue = issues[-1]
-            if last_issue["title"] == "[RCM] Implementar Dark Mode":
-                logging.info(
-                    "✅ PASSOU: Issue encontrada no arquivo mock com título correto."
-                )
-            else:
-                logging.error(
-                    f"❌ FALHOU: Título da issue incorreto. Encontrado: {last_issue['title']}"
-                )
-
-            if "Dark Mode" in last_issue["body"]:
-                logging.info("✅ PASSOU: Corpo da issue contém a descrição.")
-            else:
-                logging.error("❌ FALHOU: Corpo da issue não contém a descrição.")
-
-        else:
-            logging.error("❌ FALHOU: Arquivo mock não foi criado.")
-
-        # Limpeza
-        if os.path.exists(mock_file):
-            os.remove(mock_file)
-            logging.info("Arquivo de teste removido.")
+        print("\n1. Testando listagem de issues...")
+        issues = connector.list_issues(state="open")
+        print(f"✅ Sucesso! Encontradas {len(issues)} issues abertas.")
+        for issue in issues[:3]:  # Mostra as 3 primeiras
+            print(f"   - #{issue['number']}: {issue['title']} ({issue['html_url']})")
 
     except Exception as e:
-        logging.error(f"Erro durante a verificação: {e}")
-        import traceback
+        print(f"❌ Falha ao listar issues: {e}")
+        return
 
-        traceback.print_exc()
+    # Opcional: Teste de criação (Cuidado para não criar lixo em repos reais de produção sem querer)
+    # Descomente abaixo para testar criação se estiver usando um repo de teste
+    """
+    try:
+        print("\n2. Testando criação de issue de teste...")
+        new_issue = connector.create_issue(
+            title="[TESTE] Verificação Automática do Conector",
+            body="Esta é uma issue de teste criada pelo script de verificação.",
+            labels=["teste", "bot"]
+        )
+        if new_issue:
+            print(f"✅ Issue criada com sucesso: {new_issue['html_url']}")
+        else:
+            print("❌ Falha ao criar issue.")
+    except Exception as e:
+        print(f"❌ Erro na criação: {e}")
+    """
 
 
 if __name__ == "__main__":
-    verify_github_connector()
+    verify_github_connection()

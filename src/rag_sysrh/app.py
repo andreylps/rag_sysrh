@@ -21,11 +21,11 @@ if str(SRC_PATH) not in sys.path:
     sys.path.append(str(SRC_PATH))
 
 from rag_sysrh.agent_executor import build_agent  # noqa: E402
+from rag_sysrh.agente_bi import AgenteBI  # noqa: E402
 from rag_sysrh.agente_documentacao import AgenteDocumentacao  # noqa: E402
 from rag_sysrh.agente_faturamento import AgenteFaturamento  # noqa: E402
 from rag_sysrh.agente_planejamento_rcm import AgentePlanejamentoRCM  # noqa: E402
 from rag_sysrh.agente_qualidade import AgenteQualidade  # noqa: E402
-from rag_sysrh.connectors import GitHubMockConnector  # noqa: E402
 from rag_sysrh.data_ingestion import DataIngestion  # noqa: E402
 from rag_sysrh.guarded_workflow import guarded_app  # noqa: E402
 from rag_sysrh.main import get_tools  # noqa: E402
@@ -289,97 +289,106 @@ def render_analysis_interface() -> None:
                     plano_rcm = agente_planejamento.gerar_plano_rcm(relatorio)
 
                     if plano_rcm:
-                        st.markdown("### Plano de RCM Gerado")
-                        st.markdown(
-                            agente_planejamento.formatar_plano_para_markdown(plano_rcm)
+                        # Persiste o plano no estado da sessão para sobreviver ao rerun
+                        st.session_state.plano_rcm_atual = plano_rcm
+
+                        # Salva o plano como nó no Neo4j (Status: Pendente Aprovação)
+                        # Isso garante que o nó exista quando formos aprovar
+                        rcm_node_id = agente_planejamento.salvar_plano_rcm(
+                            plano_rcm, relatorio.solicitacao_id
                         )
-
-                        # --- Fluxo de Aprovação (Human-in-the-Loop) ---
-                        st.warning(
-                            "⚠️ Este plano está como 'Pendente Aprovação'. Revise antes de aprovar."
-                        )
-
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            if st.button("✅ Aprovar Plano de RCM"):
-                                with st.spinner("Oficializando RCM..."):
-                                    try:
-                                        rcm_id = agente_planejamento.aprovar_plano_rcm(
-                                            plano_rcm.titulo_rcm
-                                        )
-                                        if rcm_id:
-                                            st.success(
-                                                f"RCM '{plano_rcm.titulo_rcm}' aprovada e oficializada!"
-                                            )
-                                            st.balloons()
-                                            st.session_state.rcm_aprovada_id = rcm_id
-                                            st.session_state.rcm_aprovada_titulo = (
-                                                plano_rcm.titulo_rcm
-                                            )
-                                        else:
-                                            st.error("Não foi possível aprovar a RCM.")
-                                    except Exception as e:
-                                        st.error(f"Erro ao aprovar RCM: {e}")
-                        with col2:
-                            if st.button("❌ Descartar Rascunho"):
-                                st.info(
-                                    "Rascunho descartado (funcionalidade de exclusão a implementar)."
-                                )
-
-                        # Se a RCM acabou de ser aprovada (ou já estava no estado), mostra o botão de exportar
-                        if (
-                            st.session_state.get("rcm_aprovada_titulo")
-                            == plano_rcm.titulo_rcm
-                        ):
-                            st.markdown("---")
-                            st.success("✅ RCM Aprovada! Pronta para integração.")
-                            if st.button("📤 Exportar para GitHub (Simulado)"):
-                                with st.spinner("Exportando issue para o GitHub..."):
-                                    try:
-                                        connector = GitHubMockConnector()
-                                        ext_id = (
-                                            agente_planejamento.exportar_para_externo(
-                                                st.session_state.rcm_aprovada_id,
-                                                connector,
-                                            )
-                                        )
-                                        if ext_id:
-                                            st.success(
-                                                f"Issue criada com sucesso! [Acessar no GitHub]({ext_id})"
-                                            )
-                                        else:
-                                            st.error("Falha ao exportar RCM.")
-                                    except Exception as e:
-                                        st.error(f"Erro na exportação: {e}")
-
-                        # Salva o plano (como pendente) automaticamente ao gerar, ou poderia ser apenas ao aprovar.
-                        # Pela lógica atual do agente, ele já salva no final do 'gerar_plano_rcm' se chamarmos o método de salvar.
-                        # O código original do app.py chamava 'salvar_plano_rcm' logo após gerar?
-                        # Vamos verificar o código original. Se não chamava, precisamos chamar.
-                        # O código original do app.py (não mostrado aqui, mas inferido) provavelmente chamava salvar.
-                        # Vamos assumir que o botão "Gerar Plano" já chama o salvar.
-                        # Se não, deveríamos chamar aqui.
-                        # Olhando o código anterior (não visível no diff), o app chamava:
-                        # agente_planejamento.salvar_plano_rcm(plano_gerado, solicitacao_id)
-                        # Vamos garantir que isso seja feito ANTES da aprovação, para que o nó exista.
-
-                        # Como estamos dentro do bloco 'if plano_rcm', vamos salvar como pendente agora.
-                        try:
-                            # Precisamos do ID da solicitação. O código original pegava de 'solicitacao_selecionada'.
-                            # Vamos assumir que 'solicitacao_selecionada' está disponível no escopo (estava no código original).
-                            # O ID é a primeira parte da string "ID - Título"
-                            # O relatorio já contém o solicitacao_id
-                            agente_planejamento.salvar_plano_rcm(
-                                plano_rcm, relatorio.solicitacao_id
-                            )
-                            st.toast(
-                                "✅ Rascunho do Plano de RCM salvo no banco de dados!"
-                            )
-                        except Exception as e:
-                            st.error(f"Erro ao salvar rascunho: {e}")
+                        st.session_state.plano_rcm_node_id = rcm_node_id
+                        st.toast("✅ Rascunho da RCM salvo no banco de dados!")
 
                 except Exception as e:
-                    st.error(f"Ocorreu um erro ao gerar o plano de RCM: {e}")
+                    st.error(f"Erro ao gerar plano de RCM: {e}")
+
+        # Verifica se há um plano gerado no estado (seja agora ou de antes)
+        if st.session_state.get("plano_rcm_atual"):
+            plano_rcm = st.session_state.plano_rcm_atual
+
+            # Recarrega o agente se necessário (pois ele não é persistido no session_state)
+            agente_planejamento = load_agente_planejamento_rcm()
+
+            # FORÇA BRUTA: Garante que o plano exibido esteja limpo, mesmo que venha de um estado antigo
+            plano_rcm = agente_planejamento._limpar_html_plano(plano_rcm)
+            st.session_state.plano_rcm_atual = (
+                plano_rcm  # Atualiza o estado com a versão limpa
+            )
+
+            st.markdown("### Plano de RCM Gerado")
+            st.markdown(agente_planejamento.formatar_plano_para_markdown(plano_rcm))
+            # --- Fluxo de Aprovação (Human-in-the-Loop) ---
+            st.warning(
+                "⚠️ Este plano está como 'Pendente Aprovação'. Revise antes de aprovar."
+            )
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Aprovar Plano de RCM"):
+                    with st.spinner("Oficializando RCM..."):
+                        try:
+                            # Usa o ID do nó salvo anteriormente para aprovar
+                            node_id = st.session_state.get("plano_rcm_node_id")
+                            if not node_id:
+                                # Fallback: tenta salvar agora se não tiver ID (caso de estado antigo)
+                                node_id = agente_planejamento.salvar_plano_rcm(
+                                    plano_rcm, relatorio.solicitacao_id
+                                )
+                                st.session_state.plano_rcm_node_id = node_id
+
+                            rcm_id = agente_planejamento.aprovar_plano_rcm(node_id)
+
+                            if rcm_id:
+                                st.success(
+                                    f"RCM '{plano_rcm.titulo_rcm}' aprovada e oficializada!"
+                                )
+
+                                st.balloons()
+                                st.session_state.rcm_aprovada_id = rcm_id
+                                st.session_state.rcm_aprovada_titulo = (
+                                    plano_rcm.titulo_rcm
+                                )
+                                # Força um rerun para atualizar a interface e mostrar o botão de exportar fora do bloco
+                                st.rerun()
+                            else:
+                                st.error("Não foi possível aprovar a RCM.")
+                        except Exception as e:
+                            st.error(f"Erro ao aprovar RCM: {e}")
+            with col2:
+                if st.button("❌ Descartar Rascunho", key="btn_discard_draft"):
+                    st.info(
+                        "Rascunho descartado (funcionalidade de exclusão a implementar)."
+                    )
+
+            # Se a RCM acabou de ser aprovada (ou já estava no estado), mostra o botão de exportar
+            if st.session_state.get("rcm_aprovada_titulo") == plano_rcm.titulo_rcm:
+                st.markdown("---")
+                st.success("✅ RCM Aprovada! Pronta para integração.")
+                if st.button("📤 Exportar para GitHub (Real)", key="btn_export_final"):
+                    with st.spinner("Exportando issue para o GitHub..."):
+                        try:
+                            # Usa o conector real do GitHub
+                            from rag_sysrh.github_connector import GitHubConnector
+
+                            # Verifica se o token está configurado
+                            if not os.getenv("GITHUB_TOKEN"):
+                                st.error("GITHUB_TOKEN não configurado no arquivo .env")
+                            else:
+                                connector = GitHubConnector()
+                                ext_id = agente_planejamento.exportar_para_externo(
+                                    st.session_state.rcm_aprovada_id,
+                                    connector,
+                                )
+                                if ext_id:
+                                    st.success(
+                                        f"Issue criada com sucesso no GitHub! [Acessar Issue]({ext_id})"
+                                    )
+                                    st.balloons()
+                                else:
+                                    st.error("Falha ao exportar RCM.")
+                        except Exception as e:
+                            st.error(f"Erro na exportação: {e}")
 
 
 def render_dashboard_interface() -> None:
@@ -397,15 +406,105 @@ def render_dashboard_interface() -> None:
         st.error(f"Não foi possível conectar ao Neo4j para o dashboard: {e}")
         return
 
+    # --- FILTROS ---
+    with st.expander("🔍 Filtros de Visualização", expanded=False):
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            # Filtro de Status
+            all_statuses = graph.query(
+                "MATCH (s:Solicitacao) RETURN DISTINCT s.status as status"
+            )
+            status_options = [r["status"] for r in all_statuses] if all_statuses else []
+            selected_statuses = st.multiselect(
+                "Filtrar por Status", status_options, default=status_options
+            )
+
+        with col_f2:
+            # Filtro de Responsável
+            all_resps = graph.query(
+                "MATCH (r:Responsavel) RETURN DISTINCT r.nome as nome"
+            )
+            resp_options = [r["nome"] for r in all_resps] if all_resps else []
+            selected_resps = st.multiselect(
+                "Filtrar por Responsável", resp_options, default=resp_options
+            )
+
+    # Construção da Query Base com Filtros
+    where_clauses = []
+    params = {}
+
+    if selected_statuses:
+        where_clauses.append("s.status IN $statuses")
+        params["statuses"] = selected_statuses
+
+    if selected_resps:
+        where_clauses.append(
+            "exists((s)-[:ATRIBUIDA_A]->(:Responsavel {nome: $resp_name}))"
+        )
+        # Nota: Multiselect para responsável exigiria uma query mais complexa se quisermos filtrar "qualquer um dos selecionados".
+        # Simplificação: Filtrar onde o responsável ESTÁ na lista selecionada.
+        # Ajuste da query acima para lista:
+        where_clauses.pop()  # Remove a anterior
+        where_clauses.append(
+            "EXISTS { MATCH (s)-[:ATRIBUIDA_A]->(r:Responsavel) WHERE r.nome IN $resps }"
+        )
+        params["resps"] = selected_resps
+
+    where_stmt = " WHERE " + " AND ".join(where_clauses) if where_clauses else ""
+
+    # --- KPIS ---
+    st.markdown("### Indicadores Chave (KPIs)")
+    kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+
+    # Total Solicitações
+    total_query = f"MATCH (s:Solicitacao){where_stmt} RETURN count(s) as total"
+    total_res = graph.query(total_query, params=params)
+    total_val = total_res[0]["total"] if total_res else 0
+    kpi_col1.metric("Total Solicitações", total_val)
+
+    # Em Aberto (Status != Concluída e != Cancelada)
+    # Ajuste conforme seus status reais. Assumindo 'Concluída' como final.
+    open_query = f"MATCH (s:Solicitacao){where_stmt} AND NOT s.status IN ['Concluída', 'Cancelada'] RETURN count(s) as total"
+    # Se o where_stmt já existir, precisamos usar AND. Se não, WHERE.
+    # Pequeno fix para concatenação correta:
+    if where_stmt:
+        open_query = f"MATCH (s:Solicitacao){where_stmt} AND NOT s.status IN ['Concluída', 'Cancelada'] RETURN count(s) as total"
+    else:
+        open_query = "MATCH (s:Solicitacao) WHERE NOT s.status IN ['Concluída', 'Cancelada'] RETURN count(s) as total"
+
+    open_res = graph.query(open_query, params=params)
+    open_val = open_res[0]["total"] if open_res else 0
+    kpi_col2.metric("Em Aberto", open_val)
+
+    # Concluídas
+    done_query = f"MATCH (s:Solicitacao){where_stmt} AND s.status = 'Concluída' RETURN count(s) as total"
+    if not where_stmt:
+        done_query = "MATCH (s:Solicitacao) WHERE s.status = 'Concluída' RETURN count(s) as total"
+
+    done_res = graph.query(done_query, params=params)
+    done_val = done_res[0]["total"] if done_res else 0
+    kpi_col3.metric("Concluídas", done_val)
+
+    # RCMs Aprovadas (Métrica de Negócio)
+    rcm_query = "MATCH (r:RCM) RETURN count(r) as total"
+    # RCMs podem não estar ligadas diretamente aos filtros de solicitação da mesma forma,
+    # mas vamos manter global ou tentar filtrar se houver relação.
+    # Simplificação: Global.
+    rcm_res = graph.query(rcm_query)
+    rcm_val = rcm_res[0]["total"] if rcm_res else 0
+    kpi_col4.metric("RCMs Aprovadas", rcm_val)
+
+    st.markdown("---")
+
     # --- GERAÇÃO DOS GRÁFICOS ---
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown("#### Distribuição por Status")
         with st.spinner("Carregando dados..."):
-            status_data = graph.query(
-                "MATCH (s:Solicitacao) RETURN s.status AS status, count(s) AS quantidade"  # noqa: E501
-            )
+            status_query = f"MATCH (s:Solicitacao){where_stmt} RETURN s.status AS status, count(s) AS quantidade"
+            status_data = graph.query(status_query, params=params)
+
             if status_data:
                 df_status = pd.DataFrame(status_data)
                 chart_status = (
@@ -414,53 +513,155 @@ def render_dashboard_interface() -> None:
                     .encode(
                         x=alt.X("quantidade:Q", title="Quantidade"),
                         y=alt.Y("status:N", title="Status", sort="-x"),
+                        color=alt.Color("status:N", legend=None),
                         tooltip=["status", "quantidade"],
                     )
                     .interactive()
                 )
-                st.altair_chart(
-                    chart_status, use_container_width=True
-                )  # Mantido conforme doc do altair, mas ciente do warning
+                st.altair_chart(chart_status, use_container_width=True)
+            else:
+                st.info("Sem dados para exibir com os filtros atuais.")
 
     with col2:
         st.markdown("#### Carga por Responsável")
         with st.spinner("Carregando dados..."):
-            responsavel_data = graph.query(
-                """
+            # Query ajustada para usar os filtros na Solicitação 's'
+            resp_query = f"""
                 MATCH (s:Solicitacao)-[:ATRIBUIDA_A]->(r:Responsavel)
+                {where_stmt}
                 RETURN r.nome AS responsavel, count(s) AS quantidade
                 ORDER BY quantidade DESC LIMIT 10
-                """
-            )
+            """
+            responsavel_data = graph.query(resp_query, params=params)
+
             if responsavel_data:
                 df_responsavel = pd.DataFrame(responsavel_data)
                 chart_responsavel = (
                     alt.Chart(df_responsavel)
                     .mark_bar()
                     .encode(
-                        x=alt.X("quantidade:Q", title="Quantidade de Solicitações"),
+                        x=alt.X("quantidade:Q", title="Quantidade"),
                         y=alt.Y("responsavel:N", title="Responsável", sort="-x"),
+                        color=alt.Color("responsavel:N", legend=None),
                         tooltip=["responsavel", "quantidade"],
                     )
                     .interactive()
                 )
-                st.altair_chart(
-                    chart_responsavel, use_container_width=True
-                )  # Mantido conforme doc do altair, mas ciente do warning
+                st.altair_chart(chart_responsavel, use_container_width=True)
+            else:
+                st.info("Sem dados para exibir com os filtros atuais.")
 
-    # --- AGENTE ANALISTA DE BI ---
+    # --- GRÁFICO TEMPORAL (NOVO) ---
+    st.markdown("#### Evolução Temporal (Solicitações Criadas)")
+    # Assumindo que existe uma propriedade de data. Se não existir, vamos usar um mock ou tentar extrair do ID/Log.
+    # O grafo atual pode não ter data_criacao explícita em todas as s:Solicitacao.
+    # Vamos verificar se conseguimos simular ou se usamos o que tem.
+    # Fallback: Se não tiver data, mostramos aviso.
+
+    # Tentativa de buscar data. Se não tiver, o gráfico ficará vazio.
+    # Melhoria: Garantir que na ingestão a data seja setada.
+    # Por enquanto, vamos tentar agrupar por 'data_criacao' se existir.
+
+    time_query = f"""
+        MATCH (s:Solicitacao)
+        {where_stmt}
+        WHERE s.data_criacao IS NOT NULL
+        RETURN date(datetime(s.data_criacao)) as data, count(s) as quantidade
+        ORDER BY data
+    """
+    # Nota: Se data_criacao for string ISO, datetime() converte.
+
+    try:
+        time_data = graph.query(time_query, params=params)
+        if time_data:
+            df_time = pd.DataFrame(time_data)
+            # Converter objeto neo4j date para string ou datetime python
+            df_time["data"] = df_time["data"].astype(str)
+
+            chart_time = (
+                alt.Chart(df_time)
+                .mark_line(point=True)
+                .encode(
+                    x=alt.X("data:T", title="Data"),
+                    y=alt.Y("quantidade:Q", title="Solicitações"),
+                    tooltip=["data", "quantidade"],
+                )
+                .interactive()
+            )
+            st.altair_chart(chart_time, use_container_width=True)
+        else:
+            st.warning(
+                "Não foi possível gerar o gráfico temporal (propriedade 'data_criacao' ausente ou filtros muito restritivos)."
+            )
+    except Exception:
+        st.warning("Dados temporais indisponíveis para visualização.")
+
+    # --- CHAT COM OS DADOS (AGENTE BI) ---
     st.markdown("---")
-    st.markdown("### 🧠 Análise do Agente de BI")
-    if st.button("Gerar Análise dos Dados"):
+    st.markdown("### 💬 Chat com os Dados")
+    with st.expander("Conversar com o Agente de Dados", expanded=True):
+        st.write(
+            "Faça perguntas em linguagem natural sobre os dados do sistema (ex: 'Quantas solicitações estão atrasadas?')."
+        )
+
+        # Inicializa o histórico de chat do BI se não existir
+        if "bi_messages" not in st.session_state:
+            st.session_state.bi_messages = []
+
+        # Exibe histórico
+        for msg in st.session_state.bi_messages:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+                if "cypher" in msg:
+                    with st.expander("Ver Query Cypher"):
+                        st.code(msg["cypher"], language="cypher")
+
+        # Input do usuário
+        if prompt := st.chat_input("Pergunte aos dados...", key="bi_chat_input"):
+            # Adiciona pergunta ao histórico
+            st.session_state.bi_messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            # Processa resposta
+            with st.chat_message("assistant"):
+                with st.spinner("Analisando dados..."):
+                    try:
+                        # Instancia o agente sob demanda (poderia ser cacheado)
+                        agente_bi = AgenteBI()
+                        resultado = agente_bi.responder_pergunta(prompt)
+
+                        resposta_texto = resultado["resposta"]
+                        cypher_query = resultado["cypher"]
+
+                        st.markdown(resposta_texto)
+                        with st.expander("Ver Query Cypher Gerada"):
+                            st.code(cypher_query, language="cypher")
+
+                        # Salva no histórico
+                        st.session_state.bi_messages.append(
+                            {
+                                "role": "assistant",
+                                "content": resposta_texto,
+                                "cypher": cypher_query,
+                            }
+                        )
+                    except Exception as e:
+                        st.error(f"Erro ao processar pergunta: {e}")
+
+    # --- AGENTE ANALISTA DE BI (Resumo Estático) ---
+    st.markdown("---")
+    st.markdown("### 🧠 Análise Estática (Resumo)")
+    if st.button("Gerar Análise dos Gráficos"):
         with st.spinner("O agente de BI está analisando os gráficos..."):
             llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
             prompt = f"""Você é um analista de Business Intelligence. Sua tarefa é analisar os dados brutos dos gráficos e fornecer um resumo com pontos de atenção e sugestões.
-
+            
             Dados de Distribuição por Status:
-            {status_data}
+            {status_data if "status_data" in locals() else "N/A"}
 
             Dados de Carga de Trabalho por Responsável:
-            {responsavel_data}
+            {responsavel_data if "responsavel_data" in locals() else "N/A"}
 
             Com base nesses dados, gere um resumo analítico com "Pontos de Atenção" e "Sugestões de Ação". Seja conciso e direto.
             """  # noqa: E501
@@ -710,17 +911,22 @@ def render_chatbot_page() -> None:
     """Renderiza a página combinada de Chatbot e Análise."""
     st.header("💬 Chatbot & Análise de Solicitações")
 
-    tab1, tab2, tab3 = st.tabs(
-        ["Chat Conversacional", "Análise de Solicitação", "Dashboard BI"]
+    # Usando radio button horizontal em vez de tabs para manter o estado após o rerun
+    sub_page = st.radio(
+        "Selecione a visualização:",
+        ["Chat Conversacional", "Análise de Solicitação", "Dashboard BI"],
+        horizontal=True,
+        key="chatbot_sub_nav",
+        label_visibility="collapsed",
     )
 
-    with tab1:
+    st.markdown("---")
+
+    if sub_page == "Chat Conversacional":
         render_chat_interface()
-
-    with tab2:
+    elif sub_page == "Análise de Solicitação":
         render_analysis_interface()
-
-    with tab3:
+    elif sub_page == "Dashboard BI":
         render_dashboard_interface()
 
 
@@ -784,17 +990,16 @@ def render_documentation_page() -> None:
 
 def main() -> None:
     """Função principal da aplicação Streamlit."""
-    load_dotenv()
-    carregar_dados_faturamento()  # Garante que os dados de faturamento estão no banco
-
-    # Inicializa o grafo e a ingestão de dados (se necessário)
-    initialize_graph()
-
     st.set_page_config(
         page_title="RAG SYS-RH - Assistente Inteligente",
         page_icon="🤖",
         layout="wide",
     )
+    load_dotenv()
+    carregar_dados_faturamento()  # Garante que os dados de faturamento estão no banco
+
+    # Inicializa o grafo e a ingestão de dados (se necessário)
+    initialize_graph()
 
     st.title("🤖 RAG SYS-RH - Assistente Inteligente")
 
@@ -805,7 +1010,11 @@ def main() -> None:
     if st.sidebar.button("🔄 Recarregar Conhecimento"):
         with st.sidebar.status("Recarregando dados...", expanded=True):
             initialize_graph.clear()  # Limpa o cache da inicialização
-            DataIngestion().run_ingestion(clear_db=False)  # Ingestão incremental
+            DataIngestion(
+                data_directory="data",
+                structured_data_path="data/solicitacoes.csv",
+                rcm_data_path="data/rcms_01.csv",
+            ).run_ingestion(clear_db=False)  # Ingestão incremental
             st.success("Conhecimento atualizado!")
 
     page = st.sidebar.radio(

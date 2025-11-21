@@ -1,43 +1,61 @@
-name: 🚀 Nova Solicitação / RCM
-description: Registre uma demanda, bug ou mudança para o sistema.
-title: "[RCM]: "
-labels: ["status: pendente"]
+name: Solicitação de RCM
+description: Template para solicitação de Mudança (RCM) gerada pelo Agente SYSRH.
+title: "[RCM] "
+labels: ["RCM", "Pendente Aprovação"]
 body:
   - type: markdown
     attributes:
       value: |
-        ### Formulário de Solicitação SYSRH
-        Preencha os campos abaixo para iniciar o fluxo do Agente.
+        ## Solicitação de Mudança (RCM)
+        Esta issue foi gerada automaticamente pelo Agente de Planejamento do SYSRH.
 
   - type: dropdown
-    id: tipo
+    id: tipo_solicitacao
     attributes:
       label: Tipo de Solicitação
       options:
-        - ✨ Nova Funcionalidade
-        - 🐛 Correção de Bug
-        - 🔧 Melhoria Técnica
-        - 📄 Documentação
+        - Corretiva
+        - Evolutiva
+        - Consultiva
+        - Outro
     validations:
       required: true
 
   - type: textarea
-    id: descricao
+    id: descricao_problema
     attributes:
-      label: Descrição Detalhada
-      description: O que precisa ser feito?
-      placeholder: "Descreva a necessidade..."
+      label: Descrição do Problema / Melhoria
+      description: Detalhes técnicos e funcionais da solicitação.
+      placeholder: Descreva o que precisa ser feito...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: prioridade
+    attributes:
+      label: Prioridade
+      options:
+        - Baixa
+        - Média
+        - Alta
+        - Crítica
     validations:
       required: true
 
   - type: input
-    id: esforco
+    id: esforco_estimado
     attributes:
-      label: Esforço Estimado (Horas)
-      placeholder: "Ex: 8"
+      label: Esforço Estimado (PF/Horas)
+      description: Preenchido pelo Agente.
+      placeholder: Ex: 10 PF
+    validations:
+      required: false
 
   - type: input
     id: data_entrega
     attributes:
-      label: Data de Entrega Desejada
-      placeholder: "DD/MM/AAAA"
+      label: Data Prevista de Entrega
+      description: Preenchido pelo Agente.
+      placeholder: YYYY-MM-DD
+    validations:
+      required: false
