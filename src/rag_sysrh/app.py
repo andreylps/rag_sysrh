@@ -20,6 +20,8 @@ SRC_PATH = Path(__file__).resolve().parent.parent
 if str(SRC_PATH) not in sys.path:
     sys.path.append(str(SRC_PATH))
 
+from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
+
 from rag_sysrh.agent_executor import build_agent  # noqa: E402
 from rag_sysrh.agente_bi import AgenteBI  # noqa: E402
 from rag_sysrh.agente_documentacao import AgenteDocumentacao  # noqa: E402
@@ -27,8 +29,10 @@ from rag_sysrh.agente_faturamento import AgenteFaturamento  # noqa: E402
 from rag_sysrh.agente_planejamento_rcm import AgentePlanejamentoRCM  # noqa: E402
 from rag_sysrh.agente_qualidade import AgenteQualidade  # noqa: E402
 from rag_sysrh.data_ingestion import DataIngestion  # noqa: E402
+from rag_sysrh.engine.workflow import SISPWorkflow  # noqa: E402
 from rag_sysrh.guarded_workflow import guarded_app  # noqa: E402
 from rag_sysrh.main import get_tools  # noqa: E402
+from rag_sysrh.ui.strategic_dashboard import render_strategic_dashboard  # noqa: E402
 
 # Configura o logging
 logging.basicConfig(
@@ -790,8 +794,6 @@ def render_proactive_agents_interface() -> None:  # noqa: C901, PLR0912, PLR0915
                             var_name="Legenda",
                             value_name="Valor",
                         )
-
-                        # Gráfico de Barras
                         bar_chart = (
                             alt.Chart(df_melted)
                             .mark_bar()
@@ -807,7 +809,9 @@ def render_proactive_agents_interface() -> None:  # noqa: C901, PLR0912, PLR0915
                                 ),
                                 tooltip=["mes", "Legenda", "Valor"],
                             )
+                            .interactive()
                         )
+
                         # Linha da Meta
                         line_chart = (
                             alt.Chart(df_final)
@@ -821,6 +825,9 @@ def render_proactive_agents_interface() -> None:  # noqa: C901, PLR0912, PLR0915
                         # Sobrepor gráficos
                         final_chart = (bar_chart + line_chart).interactive()
                         st.altair_chart(final_chart, use_container_width=True)
+
+                    else:
+                        st.info("Dados insuficientes para gerar o gráfico.")
 
                     # Gráfico 2: Análise de Rentabilidade
                     st.markdown("#### Análise de Rentabilidade por Entrega")
@@ -866,6 +873,215 @@ def render_proactive_agents_interface() -> None:  # noqa: C901, PLR0912, PLR0915
     st.write(
         "Monitora RCMs concluídos e propõe atualizações para os manuais do sistema, mantendo a documentação sempre atualizada."  # noqa: E501
     )
+    if st.button("Executar Ciclo do Agente de Documentação"):
+        with st.status(
+            "🧠 O Agente de Documentação está pensando...", expanded=True
+        ) as status:
+            try:
+                agente_documentacao = AgenteDocumentacao()
+                relatorio = agente_documentacao.executar_ciclo_atualizacao(
+                    status_callback=lambda msg: status.update(label=f"🧠 {msg}")
+                )
+                st.markdown(relatorio)
+            except Exception as e:  # noqa: BLE001
+                st.error(
+                    f"Ocorreu um erro durante a execução do Agente de Documentação: {e}"
+                )
+
+
+def render_sisp_interface() -> None:
+    """Renderiza a interface de Engenharia de Software SISP (HIL)."""
+    st.subheader("🏗️ Engenharia de Software SISP 2.3")
+    st.write(
+        "Geração de documentação formal e cálculo de métricas com supervisão humana."
+    )
+
+    # Inicialização de Estado
+    if "sisp_thread_id" not in st.session_state:
+        st.session_state.sisp_thread_id = (
+            "thread_sisp_1"  # Fixo por enquanto, ideal ser dinâmico
+        )
+    if "sisp_app" not in st.session_state:
+        # Inicializa o workflow com memória
+        memory = MemorySaver()
+        workflow = SISPWorkflow()
+
+        # Usa o método de construção do próprio workflow, mas injetando o checkpointer
+        # Para isso, precisamos que o build_graph aceite checkpointer ou retornamos o builder
+        # Como o build_graph atual já compila, vamos adaptar o app.py para usar os métodos restaurados
+        # ou melhor, vamos usar o build_graph do workflow se possível, mas ele não aceita checkpointer.
+        # Vamos manter a construção manual aqui por enquanto, pois ela permite injetar o memory.
+
+        from langgraph.graph import END, StateGraph
+
+        from rag_sysrh.engine.models import EstadoEngenharia
+
+        builder = StateGraph(EstadoEngenharia)
+        builder.add_node("analise_ia", workflow._node_analise_ia)
+        builder.add_node("validacao_humana", workflow._node_human_input_check)
+        builder.add_node("motor_sisp", workflow._node_calculo_sisp)
+        builder.add_node("geracao_docs", workflow._node_geracao_docs)
+        builder.add_node(
+            "auditoria_qualidade", workflow._node_auditoria_qualidade
+        )  # Adicionado Auditoria
+
+        builder.set_entry_point("analise_ia")
+        builder.add_edge("analise_ia", "validacao_humana")
+        builder.add_edge("validacao_humana", "motor_sisp")
+        builder.add_edge("motor_sisp", "geracao_docs")
+        builder.add_edge("geracao_docs", "auditoria_qualidade")
+        builder.add_edge("auditoria_qualidade", END)
+
+        st.session_state.sisp_app = builder.compile(
+            checkpointer=memory, interrupt_before=["validacao_humana"]
+        )
+
+    # Input da Solicitação (Pode vir da análise anterior ou novo)
+    default_text = ""
+    if st.session_state.get("relatorio_analise"):
+        # Pré-preenche com resumo se houver
+        rel = st.session_state.relatorio_analise
+        default_text = f"{rel.resumo_problema}\n\nDiagnóstico: {rel.diagnostico}"
+
+    solicitacao = st.text_area(
+        "Descreva a Demanda Técnica:", value=default_text, height=150, key="sisp_input"
+    )
+
+    # Botão de Início
+    if st.button("🚀 Iniciar Engenharia SISP"):
+        if not solicitacao:
+            st.warning("Preencha a solicitação.")
+        else:
+            with st.spinner("🤖 IA Analisando Risco e Identificando Itens..."):
+                thread_config = {
+                    "configurable": {"thread_id": st.session_state.sisp_thread_id}
+                }
+                inputs = {"solicitacao_original": solicitacao}
+
+                # Executa até a pausa
+                for event in st.session_state.sisp_app.stream(
+                    inputs, config=thread_config
+                ):
+                    pass  # Apenas consome o stream até parar
+
+                st.session_state.sisp_status = "WAITING_INPUT"
+                st.rerun()
+
+    # Área de Interação Humana (HIL)
+    if st.session_state.get("sisp_status") == "WAITING_INPUT":
+        st.info("⏸️ Workflow Pausado: Aguardando Input Humano (Tabela 0)")
+
+        # Recupera estado atual para mostrar o que a IA achou
+        thread_config = {"configurable": {"thread_id": st.session_state.sisp_thread_id}}
+        state_snapshot = st.session_state.sisp_app.get_state(thread_config)
+
+        if state_snapshot.values.get("itens_identificados"):
+            st.write("### 📋 Itens Identificados pela IA")
+            itens = state_snapshot.values["itens_identificados"]
+            for item in itens:
+                st.markdown(
+                    f"- **{item.nome}** ({item.tipo.value}): {item.descricao} (DER: {item.der_estimado}, RLR: {item.rlr_estimado})"
+                )
+
+        st.markdown("---")
+        deflator = st.number_input(
+            "Informe o Deflator/Redutor (Tabela 0)",
+            min_value=0.0,
+            max_value=1.0,
+            value=1.0,
+            step=0.05,
+            help="1.0 = Sem redução (Desenvolvimento Pleno). 0.5 = Manutenção Adaptativa, etc.",
+        )
+
+        if st.button("✅ Confirmar e Gerar Documentação"):
+            with st.spinner("⚙️ Calculando Métricas e Gerando Arquivos..."):
+                # Atualiza estado e retoma
+                st.session_state.sisp_app.update_state(
+                    thread_config, {"deflator_tabela0": deflator}
+                )
+
+                # Resume (passando None pois já atualizamos estado)
+                for event in st.session_state.sisp_app.stream(
+                    None, config=thread_config
+                ):
+                    pass
+
+                st.session_state.sisp_status = "COMPLETED"
+                st.rerun()
+
+    # Área de Resultados
+    if st.session_state.get("sisp_status") == "COMPLETED":
+        st.success("✅ Processo de Engenharia Concluído!")
+
+        thread_config = {"configurable": {"thread_id": st.session_state.sisp_thread_id}}
+        final_state = st.session_state.sisp_app.get_state(thread_config)
+        res = final_state.values.get("resultado_sisp")
+        verdict = final_state.values.get("audit_verdict")
+
+        if res and verdict:
+            # --- Seção de Auditoria (Quality Gate) ---
+            st.markdown("### 🛡️ Auditoria de Qualidade & Compliance")
+
+            if verdict.audit_status == "APROVADO":
+                st.success(
+                    f"✅ **APROVADO** (Nota Técnica: {verdict.quality_score}/5.0)"
+                )
+                st.info(f"📝 {verdict.final_comments}")
+            else:
+                st.error(
+                    f"❌ **REPROVADO** (Nota Técnica: {verdict.quality_score}/5.0)"
+                )
+                st.warning(f"⚠️ {verdict.final_comments}")
+
+            # Exibe Não-Conformidades
+            if verdict.non_conformities:
+                with st.expander(
+                    "Detalhes da Auditoria (Não-Conformidades)", expanded=True
+                ):
+                    for nc in verdict.non_conformities:
+                        severity_icon = (
+                            "🔴"
+                            if nc.severity == "CRITICAL"
+                            else ("🟠" if nc.severity == "HIGH" else "🟡")
+                        )
+                        st.markdown(f"{severity_icon} **[{nc.type}]** {nc.description}")
+
+            st.markdown("---")
+
+            # --- Resultados e Downloads (Apenas se Aprovado) ---
+            if verdict.audit_status == "APROVADO":
+                col1, col2, col3 = st.columns(3)
+                col1.metric("PF Bruto", res.pf_bruto_total)
+                col2.metric("PF Líquido", f"{res.pf_liquido_total:.2f}")
+                col3.metric("Prazo Estimado", f"{res.prazo_estimado_dias} dias")
+
+                st.markdown("### 📂 Documentação Gerada")
+
+                # Botões de Download
+                if os.path.exists(res.memoria_calculo_path):
+                    with open(res.memoria_calculo_path, "rb") as f:
+                        st.download_button(
+                            "📥 Baixar Memória de Cálculo (.xlsx)",
+                            f,
+                            file_name=os.path.basename(res.memoria_calculo_path),
+                        )
+
+                if os.path.exists(res.rcm_path):
+                    with open(res.rcm_path, "rb") as f:
+                        st.download_button(
+                            "📥 Baixar RCM (.docx)",
+                            f,
+                            file_name=os.path.basename(res.rcm_path),
+                        )
+            else:
+                st.error(
+                    "⛔ **Entrega Bloqueada pelo Auditor.** Corrija os problemas listados e reinicie o processo."
+                )
+
+            if st.button("🔄 Reiniciar Processo"):
+                st.session_state.sisp_status = "IDLE"
+                st.rerun()
+
     if st.button("Executar Ciclo do Agente de Documentação"):
         with st.status(
             "🧠 O Agente de Documentação está pensando...", expanded=True
@@ -988,6 +1204,114 @@ def render_documentation_page() -> None:
                             st.error(f"Erro: {e}")
 
 
+def render_knowledge_base_page() -> None:
+    """Renderiza a página de gestão da Base de Conhecimento."""
+    st.header("🧠 Base de Conhecimento")
+    st.write(
+        "Gerencie os documentos e manuais que alimentam a inteligência do sistema."
+    )
+
+    try:
+        graph = Neo4jGraph(
+            url=os.getenv("NEO4J_URI"),
+            username=os.getenv("NEO4J_USERNAME"),
+            password=os.getenv("NEO4J_PASSWORD"),
+        )
+    except Exception as e:
+        st.error(f"Erro ao conectar ao Neo4j: {e}")
+        return
+
+    # --- KPIs ---
+    col1, col2, col3 = st.columns(3)
+
+    # Total de Manuais
+    res_manuais = graph.query("MATCH (m:Manual) RETURN count(m) as total")
+    total_manuais = res_manuais[0]["total"] if res_manuais else 0
+    col1.metric("Manuais Carregados", total_manuais)
+
+    # Total de Chunks (Trechos)
+    res_chunks = graph.query("MATCH (c:Chunk) RETURN count(c) as total")
+    total_chunks = res_chunks[0]["total"] if res_chunks else 0
+    col2.metric("Trechos Indexados", total_chunks)
+
+    # Total de RCMs (Base Histórica)
+    res_rcms = graph.query("MATCH (r:RCM) RETURN count(r) as total")
+    total_rcms = res_rcms[0]["total"] if res_rcms else 0
+    col3.metric("RCMs Históricas", total_rcms)
+
+    st.markdown("---")
+
+    # --- AÇÕES ---
+    st.subheader("⚙️ Ações")
+    col_act1, col_act2 = st.columns(2)
+
+    with col_act1:
+        st.info(
+            "Adicione novos arquivos na pasta `data/` e clique abaixo para processar."
+        )
+        if st.button("🔄 Carregar/Atualizar Conhecimento"):
+            with st.status("Processando ingestão de dados...", expanded=True) as status:
+                try:
+                    status.write("Iniciando pipeline de ingestão...")
+                    ingestion = DataIngestion(
+                        data_directory="data",
+                        structured_data_path="data/solicitacoes.csv",
+                        rcm_data_path="data/rcms_01.csv",
+                    )
+                    # Ingestão incremental (clear_db=False) para não apagar tudo
+                    ingestion.run_ingestion(clear_db=False)
+                    status.update(
+                        label="✅ Conhecimento atualizado com sucesso!",
+                        state="complete",
+                    )
+                    st.balloons()
+                    # Aguarda um pouco e recarrega a página para atualizar KPIs
+                    import time
+
+                    time.sleep(2)
+                    st.rerun()
+                except Exception as e:
+                    status.update(label="❌ Erro na ingestão", state="error")
+                    st.error(f"Falha ao carregar conhecimento: {e}")
+
+    with col_act2:
+        st.info("Limpeza total da base (Cuidado: Apaga tudo!)")
+        if st.button("🗑️ Limpar Base de Conhecimento", type="primary"):
+            if st.checkbox("Confirmo que quero apagar todo o conhecimento do sistema."):
+                with st.spinner("Limpando banco de dados..."):
+                    try:
+                        graph.query("MATCH (n) DETACH DELETE n")
+                        st.success("Base de dados limpa com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao limpar base: {e}")
+
+    st.markdown("---")
+
+    # --- LISTAGEM DE DOCUMENTOS ---
+    st.subheader("📂 Documentos Indexados")
+
+    tab1, tab2 = st.tabs(["Manuais", "RCMs"])
+
+    with tab1:
+        manuais = graph.query("MATCH (m:Manual) RETURN m.nome as nome ORDER BY m.nome")
+        if manuais:
+            df_manuais = pd.DataFrame(manuais)
+            st.dataframe(df_manuais, use_container_width=True)
+        else:
+            st.info("Nenhum manual indexado.")
+
+    with tab2:
+        rcms = graph.query(
+            "MATCH (r:RCM) RETURN r.id as id, r.titulo as titulo, r.status as status ORDER BY r.id DESC LIMIT 50"
+        )
+        if rcms:
+            df_rcms = pd.DataFrame(rcms)
+            st.dataframe(df_rcms, use_container_width=True)
+        else:
+            st.info("Nenhuma RCM indexada.")
+
+
 def main() -> None:
     """Função principal da aplicação Streamlit."""
     st.set_page_config(
@@ -1024,6 +1348,9 @@ def main() -> None:
             "Planejamento de RCM",
             "Gestão & Qualidade",
             "Gerador de Documentação",
+            "Base de Conhecimento",
+            "Engenharia SISP (Novo)",
+            "Gerente Estratégico (BI)",
         ),
     )
 
@@ -1035,6 +1362,12 @@ def main() -> None:
         render_management_page()
     elif page == "Gerador de Documentação":
         render_documentation_page()
+    elif page == "Base de Conhecimento":
+        render_knowledge_base_page()
+    elif page == "Engenharia SISP (Novo)":
+        render_sisp_interface()
+    elif page == "Gerente Estratégico (BI)":
+        render_strategic_dashboard()
 
 
 if __name__ == "__main__":

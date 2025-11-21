@@ -1,0 +1,62 @@
+[
+  {
+    "number": 1,
+    "title": "[RCM] Implementação de Funcionalidade para Cadastro de Recibos do Auxílio Saúde dos Aposentados",
+    "body": "\n### Descrição\nA implementação dessa funcionalidade permitirá um registro organizado e eficiente dos pagamentos, facilitando a gestão financeira e a conformidade com as regulamentações pertinentes. Isso agregará valor ao sistema ao melhorar a precisão dos dados financeiros e proporcionar uma base de dados confiável para relatórios e auditorias.\n\n### Objetivo de Negócio\nAdicionar uma funcionalidade para o cadastro dos recibos do auxílio saúde dos aposentados para o ano de 2024, visando melhorar a gestão financeira e a conformidade regulatória.\n\n### Estimativa\n- **Pontos de Função:** 20\n- **Prazo:** 18 dias úteis\n\n### Critérios de Aceite\n- A nova tela de cadastro deve ser funcional e permitir o registro de todos os campos necessários.\n- As APIs devem suportar todas as operações CRUD sem erros.\n- O banco de dados deve ser modificado corretamente e suportar os novos dados sem impactar o desempenho.\n- O sistema deve manter a conformidade com as normativas de proteção de dados.\n- Os testes de carga devem confirmar que o sistema pode operar sob condições de uso elevado sem degradação de desempenho.\n\n---\n*Gerado automaticamente pelo Agente de Planejamento RAG_SYSRH*\n",
+    "labels": [
+      "RCM",
+      "Automated"
+    ],
+    "state": "open",
+    "created_at": "2025-11-20T19:33:03.539691",
+    "html_url": "https://github.com/org/repo/issues/1"
+  },
+  {
+    "number": 2,
+    "title": "[RCM] Implementação de Funcionalidade para Cadastro de Recibos de Auxílio Saúde dos Aposentados",
+    "body": "\n### Descrição\nA solução envolve o desenvolvimento de uma nova tela de cadastro com campos específicos para informações e upload de documentos, implementação de APIs de criação e consulta, adição de novas tabelas ao banco de dados, e estabelecimento de regras de negócio para limites de reembolso e notificações automáticas.\n\n### Objetivo de Negócio\nEsta mudança visa adicionar uma funcionalidade essencial para o cadastro de recibos de auxílio saúde dos aposentados, melhorando a eficiência na gestão de documentos, facilitando o processo de reembolso e assegurando a conformidade com as políticas internas e regulamentações governamentais.\n\n### Estimativa\n- **Pontos de Função:** 20\n- **Prazo:** 18 dias úteis\n\n### Critérios de Aceite\n- Interface de cadastro de recibos deve ser acessível e funcional.\n- APIs de criação e consulta devem responder corretamente às requisições.\n- Novas tabelas no banco de dados devem estar corretamente estruturadas e integradas.\n- Regras de negócio implementadas devem refletir os limites de reembolso e enviar notificações conforme especificado.\n\n---\n*Gerado automaticamente pelo Agente de Planejamento RAG_SYSRH*\n",
+    "labels": [
+      "RCM",
+      "Automated"
+    ],
+    "state": "open",
+    "created_at": "2025-11-20T19:43:25.283303",
+    "html_url": "https://github.com/mock-org/mock-repo/issues/2"
+  },
+  {
+    "number": 3,
+    "title": "[RCM] Implementação de Funcionalidade para Cadastro de Aposentados com Auxílio Educação",
+    "body": "\n### Descrição\nA funcionalidade proposta permitirá o cadastro e consulta de aposentados que recebem auxílio educação, incluindo campos específicos para dados pessoais e do benefício. Serão desenvolvidas novas telas e APIs para integração e geração de relatórios, além de implementação de validações e regras de negócio para assegurar a integridade e segurança dos dados.\n\n### Objetivo de Negócio\nA implementação desta funcionalidade visa melhorar a gestão e distribuição de benefícios para aposentados recebendo auxílio educação, garantindo a precisão dos dados e facilitando processos de auditoria e tomada de decisões estratégicas.\n\n### Estimativa\n- **Pontos de Função:** 20\n- **Prazo:** 18 dias úteis\n\n### Critérios de Aceite\n- Todas as novas telas devem estar operacionais e acessíveis\n- APIs para integração e geração de relatórios devem estar funcionando conforme especificado\n- Validações e regras de negócio devem garantir a integridade e segurança dos dados\n- Dados dos beneficiários devem ser atualizados e acessíveis para consulta\n\n---\n*Gerado automaticamente pelo Agente de Planejamento RAG_SYSRH*\n",
+    "labels": [
+      "RCM",
+      "Automated"
+    ],
+    "state": "open",
+    "created_at": "2025-11-20T19:49:51.897795",
+    "html_url": "https://github.com/mock-org/mock-repo/issues/3"
+  },
+  {
+    "number": 4,
+    "title": "[RCM] Implementação de Funcionalidade para Cadastro de Aposentados com Auxílio Educação",
+    "body": "\n### Descrição\nA funcionalidade proposta permitirá o cadastro e consulta de aposentados que recebem auxílio educação, incluindo campos específicos para dados pessoais e do benefício. Serão desenvolvidas novas telas e APIs para integração e geração de relatórios, além de implementação de validações e regras de negócio para assegurar a integridade e segurança dos dados.\n\n### Objetivo de Negócio\nA implementação desta funcionalidade visa melhorar a gestão e distribuição de benefícios para aposentados recebendo auxílio educação, garantindo a precisão dos dados e facilitando processos de auditoria e tomada de decisões estratégicas.\n\n### Estimativa\n- **Pontos de Função:** 20\n- **Prazo:** 18 dias úteis\n\n### Critérios de Aceite\n- Todas as novas telas devem estar operacionais e acessíveis\n- APIs para integração e geração de relatórios devem estar funcionando conforme especificado\n- Validações e regras de negócio devem garantir a integridade e segurança dos dados\n- Dados dos beneficiários devem ser atualizados e acessíveis para consulta\n\n---\n*Gerado automaticamente pelo Agente de Planejamento RAG_SYSRH*\n",
+    "labels": [
+      "RCM",
+      "Automated"
+    ],
+    "state": "open",
+    "created_at": "2025-11-20T19:50:20.947877",
+    "html_url": "https://github.com/mock-org/mock-repo/issues/4"
+  },
+  {
+    "number": 5,
+    "title": "[RCM] Implementação de Funcionalidade para Cadastro de Aposentados com Auxílio Educação",
+    "body": "\n### Descrição\nA funcionalidade proposta permitirá o cadastro de aposentados recebendo auxílio educação, incluindo novas telas para cadastro e consulta, campos específicos para o auxílio, e funcionalidades de interação com os dados como salvar, editar, deletar e buscar. Será necessário modificar ou desenvolver APIs para integração com outros sistemas e implementar regras de negócio para validação e conformidade.\n\n### Objetivo de Negócio\nA implementação desta funcionalidade visa melhorar a gestão e monitoramento dos benefícios de auxílio educação concedidos a aposentados, garantindo uma administração eficiente dos recursos e conformidade com as regulamentações aplicáveis.\n\n### Estimativa\n- **Pontos de Função:** 20\n- **Prazo:** 18 dias úteis\n\n### Critérios de Aceite\n- Funcionalidade de cadastro e consulta de beneficiários operacional\n- Campos específicos ao auxílio educação implementados e funcionais\n- Funcionalidades de interação com os dados (Salvar, Editar, Deletar, Buscar) testadas e operacionais\n- APIs integradas com outros sistemas e funcionando conforme especificado\n- Regras de negócio para validação e conformidade implementadas e ativas\n\n---\n*Gerado automaticamente pelo Agente de Planejamento RAG_SYSRH*\n",
+    "labels": [
+      "RCM",
+      "Automated"
+    ],
+    "state": "open",
+    "created_at": "2025-11-20T19:57:48.392230",
+    "html_url": "https://github.com/mock-org/mock-repo/issues/5"
+  }
+]

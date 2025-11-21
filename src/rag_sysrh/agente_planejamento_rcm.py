@@ -78,9 +78,17 @@ class AgentePlanejamentoRCM(BaseAgent):
         )
         modelo_rcm_texto = self._carregar_modelo_rcm(modelo_path)
 
+        # Obtém o ano atual para contexto
+        from datetime import datetime
+
+        ano_atual = datetime.now().year
+
         structured_llm = self.llm.with_structured_output(PlanoRCM)
         prompt = ChatPromptTemplate.from_template(
             """Você é um Gerente de Projetos Sênior. Sua tarefa é pegar um relatório de análise técnica e transformá-lo em um Relatório de Controle de Mudança (RCM) formal e bem estruturado.
+            
+            **CONTEXTO TEMPORAL:**
+            - Estamos no ano de **{ano_atual}**. Todas as datas futuras devem considerar este ano.
 
             **1. DADOS DA ANÁLISE TÉCNICA (Sua fonte de informação):**
             - **Resumo do Problema:** {resumo_problema}
@@ -102,6 +110,7 @@ class AgentePlanejamentoRCM(BaseAgent):
             - Defina `criterios_de_aceite` claros e testáveis.
             - Herde as estimativas diretamente da análise.
             - Seja formal e profissional.
+            - **CRÍTICO:** NÃO use tags HTML (como <p>, <div>, <br>, <style>). O texto deve ser **APENAS Markdown puro**. Se você gerar HTML, o sistema quebrará.
             """
         )
 
@@ -119,16 +128,56 @@ class AgentePlanejamentoRCM(BaseAgent):
                 if relatorio_analise.detalhes_evolutiva
                 else "N/A",
                 "modelo_rcm": modelo_rcm_texto,
+                "ano_atual": ano_atual,
             }
         )
+        # Limpa HTML do plano gerado
+        plano = self._limpar_html_plano(plano)
+
         logging.info("Plano de RCM gerado com sucesso.")
         return plano
 
-    def salvar_plano_rcm(self, plano: PlanoRCM, solicitacao_id: int) -> None:
+    def _limpar_html_plano(self, plano: PlanoRCM) -> PlanoRCM:
+        """Remove tags HTML dos campos de texto do plano."""
+        import re
+
+        def clean_text(text: str) -> str:
+            if not text:
+                return text
+            # Remove tags HTML completas (com atributos)
+            # Ex: <div style="...">, </p>, <br/>
+            clean = re.sub(r"<[^>]+>", "", text)
+            # Remove quebras de linha excessivas que podem ter sobrado
+            clean = re.sub(r"\n\s*\n", "\n\n", clean)
+            return clean.strip()
+
+        # Limpa campos de texto simples
+        plano.titulo_rcm = clean_text(plano.titulo_rcm)
+        plano.objetivo_negocio = clean_text(plano.objetivo_negocio)
+        plano.descricao_tecnica_detalhada = clean_text(
+            plano.descricao_tecnica_detalhada
+        )
+
+        # Limpa campos de lista
+        if plano.plano_de_tarefas_sugerido:
+            plano.plano_de_tarefas_sugerido = [
+                clean_text(item) for item in plano.plano_de_tarefas_sugerido
+            ]
+
+        if plano.criterios_de_aceite:
+            plano.criterios_de_aceite = [
+                clean_text(item) for item in plano.criterios_de_aceite
+            ]
+
+        if plano.riscos_mapeados:
+            plano.riscos_mapeados = [clean_text(item) for item in plano.riscos_mapeados]
+
+        return plano
+
+    def salvar_plano_rcm(self, plano: PlanoRCM, solicitacao_id: int) -> str:
         """
         Salva o PlanoRCM gerado como um nó no Neo4j e o conecta à Solicitação original.
-        O plano é salvo inicialmente como 'Pendente Aprovação' e com a label :PlanoRCM.
-        Ele só se torna uma :RCM oficial após aprovação.
+        Retorna o ID do nó criado.
         """
         logging.info(f"Salvando plano da RCM '{plano.titulo_rcm}' no grafo...")
 
@@ -138,16 +187,19 @@ class AgentePlanejamentoRCM(BaseAgent):
         # Define status inicial e ID se não tiver (embora o modelo não tenha ID, o nó precisa)
         import uuid
 
-        plano_props["id"] = str(uuid.uuid4())
+        plano_id = str(uuid.uuid4())
+        plano_props["id"] = plano_id
         plano_props["status"] = "Pendente Aprovação"
 
         query = """
-        MATCH (s:Solicitacao {id: $solicitacao_id})
         // Cria um nó :PlanoRCM com as propriedades do plano e label de pendente
         CREATE (p:PlanoRCM:RCM_Pendente $plano_props)
         // Adiciona um timestamp de criação
         SET p.dataCriacao = datetime()
-        // Conecta o plano à solicitação que o originou
+        
+        // Tenta conectar o plano à solicitação que o originou (se existir)
+        WITH p
+        MATCH (s:Solicitacao {id: $solicitacao_id})
         MERGE (p)-[:PLANO_PARA]->(s)
         """
 
@@ -155,37 +207,37 @@ class AgentePlanejamentoRCM(BaseAgent):
             query,
             params={"solicitacao_id": solicitacao_id, "plano_props": plano_props},
         )
-        logging.info("Plano de RCM salvo como Pendente Aprovação.")
+        logging.info(f"Plano de RCM salvo como Pendente Aprovação (ID: {plano_id}).")
+        return plano_id
 
-    def aprovar_plano_rcm(self, titulo_rcm: str) -> Optional[str]:
+    def aprovar_plano_rcm(self, rcm_id: str) -> Optional[str]:
         """
         Aprova um PlanoRCM pendente, transformando-o em uma RCM oficial.
-        Isso envolve:
-        1. Mudar o status para 'Aberto'.
-        2. Adicionar a label :RCM.
-        3. Remover a label :RCM_Pendente.
+        Busca pelo ID do nó.
         """
-        logging.info(f"Aprovando plano de RCM '{titulo_rcm}'...")
+        logging.info(f"Aprovando plano de RCM ID '{rcm_id}'...")
 
         query = """
-        MATCH (p:PlanoRCM {titulo_rcm: $titulo})
-        WHERE 'RCM_Pendente' IN labels(p)
-        SET p:RCM, p.status = 'Aberto'
+        MATCH (p:PlanoRCM {id: $rcm_id})
+        // Remove a label de pendente e adiciona a oficial
         REMOVE p:RCM_Pendente
+        SET p:RCM
+        SET p.status = 'Aberto'
+        SET p.dataAprovacao = datetime()
         RETURN p.id as id
         """
 
-        result = self.graph.query(query, params={"titulo": titulo_rcm})
+        result = self.graph.query(query, params={"rcm_id": rcm_id})
 
         if result:
-            rcm_id = result[0]["id"]
+            rcm_id_aprovado = result[0]["id"]
             logging.info(
-                f"RCM '{titulo_rcm}' aprovada e oficializada com sucesso (ID: {rcm_id})."
+                f"RCM aprovada e oficializada com sucesso (ID: {rcm_id_aprovado})."
             )
-            return rcm_id
+            return rcm_id_aprovado
         else:
             logging.warning(
-                f"Não foi possível aprovar a RCM '{titulo_rcm}'. Verifique se ela existe e está pendente."
+                f"Não foi possível aprovar a RCM ID '{rcm_id}'. Verifique se ela existe e está pendente."
             )
             return None
 
@@ -240,8 +292,6 @@ class AgentePlanejamentoRCM(BaseAgent):
         )
 
         markdown_output = f"""
-<div style="border: 1px solid #444; border-radius: 10px; padding: 25px; background-color: #2E3B4E; color: #FFFFFF;">
-
 ### 📄 **Relatório de Controle de Mudança (RCM)**
 
 ---
@@ -271,12 +321,14 @@ class AgentePlanejamentoRCM(BaseAgent):
 
 #### **Riscos e Estimativas**
 
-**Riscos Mapeados:**\n{riscos_md}
+**Riscos Mapeados:**
+{riscos_md}
 
-**Estimativas:** | Pontos de Função | Prazo em Dias Úteis |
+---
+**Estimativas:**
+| Pontos de Função | Prazo em Dias Úteis |
 |:---:|:---:|
-| **{plano.estimativa_pontos_funcao} PF** | **{plano.prazo_dias_uteis} dias** |
+| {plano.estimativa_pontos_funcao} PF | {plano.prazo_dias_uteis} dias |
 
-</div>
 """
         return markdown_output

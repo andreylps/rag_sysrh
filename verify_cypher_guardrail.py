@@ -7,7 +7,7 @@ SRC_PATH = Path(__file__).resolve().parent / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.append(str(SRC_PATH))
 
-from rag_sysrh.main import get_tools
+from rag_sysrh.main import get_tools  # noqa: E402
 
 # Configura logging
 logging.basicConfig(level=logging.INFO)

@@ -98,8 +98,10 @@ class DataIngestion:
             data_dir_abs_path = (
                 Path(__file__).resolve().parent.parent.parent / self.data_directory
             )
-            for filename in os.listdir(data_dir_abs_path):  # noqa: PTH208
-                files_to_process.append(os.path.join(data_dir_abs_path, filename))  # noqa: PERF401, PTH118
+            # Percorre recursivamente todos os subdiretórios
+            for root, _, files in os.walk(data_dir_abs_path):
+                for filename in files:
+                    files_to_process.append(os.path.join(root, filename))
 
         for filepath in files_to_process:
             filename = os.path.basename(filepath)  # noqa: PTH119

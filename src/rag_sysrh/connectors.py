@@ -41,7 +41,7 @@ class GitHubMockConnector(ExternalConnector):
 
         # Gera um ID simulado (como se fosse o número da issue)
         issue_number = len(issues) + 1
-        issue_url = f"https://github.com/org/repo/issues/{issue_number}"
+        issue_url = f"https://github.com/mock-org/mock-repo/issues/{issue_number}"
 
         # Cria o objeto da issue simulada
         new_issue = {

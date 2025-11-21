@@ -89,6 +89,7 @@ class WorkflowState(TypedDict):
     dados_manuais: str | list | dict | None
     dados_rcm_especifico: str | None
     diagnostico: str | None
+    dados_metricas: str | None
     relatorio_final: RelatorioAnalise | None
 
 
@@ -173,6 +174,26 @@ class AnalistaWorkflow:
         resultado_manuais = semantic_tool.invoke({"input": query})
         return {"dados_manuais": resultado_manuais}
 
+    def consultar_metricas(self, state: WorkflowState):  # noqa: ANN201
+        logging.info("Passo 3.5: Consultando guia de métricas SISP...")
+        # Em vez de consultar o RAG, retornamos a tabela oficial SISP 2.3 Tabela 9 diretamente
+        # para garantir precisão absoluta na estimativa de prazos.
+        tabela_sisp = """
+        SISP 2.3 - Tabela 9: Estimativa de Prazo de Projetos menores que 100 PF
+        | Tamanho do Projeto (PF) | Prazo Máximo (Dias Úteis) - Complex. Baixa | Prazo Máximo (Dias Úteis) - Complex. Média |
+        | :--- | :--- | :--- |
+        | Até 10 PF | 9 dias | 15 dias |
+        | De 11 PF a 20 PF | 18 dias | 30 dias |
+        | De 21 PF a 30 PF | 27 dias | 45 dias |
+        | De 31 PF a 40 PF | 36 dias | 60 dias |
+        | De 41 PF a 50 PF | 45 dias | 75 dias |
+        | De 51 PF a 60 PF | 54 dias | 90 dias |
+        | De 61 PF a 70 PF | 63 dias | 105 dias |
+        | De 71 PF a 85 PF | 70 dias | 110 dias |
+        | De 86 PF a 99 PF | 79 dias | 110 dias |
+        """
+        return {"dados_metricas": tabela_sisp}
+
     def gerar_diagnostico(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 4: Gerando diagnóstico...")  # noqa: LOG015
 
@@ -217,9 +238,17 @@ class AnalistaWorkflow:
     def gerar_relatorio_final(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 5: Gerando relatório final...")  # noqa: LOG015
         structured_llm = self.llm.with_structured_output(RelatorioAnalise)
+        from datetime import datetime
+
+        data_atual = datetime.now().strftime("%d/%m/%Y")
+
         prompt = ChatPromptTemplate.from_template(
             """Gere um relatório de análise estruturado com base em todo o contexto. Ignore o campo `solicitacao_id`, ele será preenchido depois.
             Seu objetivo é preencher todos os campos do modelo `RelatorioAnalise`, exceto `solicitacao_id`.
+
+            **CONTEXTO TEMPORAL:**
+            - Data Atual: {data_atual}
+            - Todas as estimativas de data devem ser calculadas a partir desta data.
 
             Solicitação Original: {solicitacao}
             Classificação: {classificacao}
@@ -235,16 +264,13 @@ class AnalistaWorkflow:
             6.  **solucao_sugerida**: Descreva os passos ou a solução técnica recomendada.
             7.  **esforco_resolucao_dias**: Com base na complexidade definida, estime o esforço de resolução em dias úteis seguindo estas regras: 'Baixa' -> '0-2 dias', 'Média' -> '3-7 dias', 'Alta' -> '8-15 dias', 'Ultra' -> '15-30 dias'.
             8.  **detalhes_evolutiva**: Se o `tipo_problema` for 'Melhoria' ou 'Evolutivo', preencha os sub-campos de acordo com as seguintes regras:
-                - **estimativa_pontos_funcao**: Forneça uma estimativa em Pontos de Função (ex: 8, 16, 32). Baseie-se no esforço do RCM específico, se disponível.
-                - **prazo_dias_uteis**: Use a `estimativa_pontos_funcao` para calcular o prazo em dias úteis com base na tabela abaixo. Use o valor da coluna 'dias normais'.
-                    Tabela de Prazos por Pontos de Função (PF):
-                    - Até 10 PF: 9 dias
-                    - De 11 a 20 PF: 18 dias
-                    - De 21 a 30 PF: 27 dias
-                    - De 31 a 40 PF: 36 dias
-                    - De 41 a 50 PF: 45 dias
-                    - De 51 a 99 PF: Use um valor proporcional entre 54 e 79 dias.
-                - **data_prevista_entrega**: Calcule a data de entrega somando o `prazo_dias_uteis` à data atual.
+                - **estimativa_pontos_funcao**: Calcule os Pontos de Função (PF) com base nas regras do SISP recuperadas abaixo.
+                - **prazo_dias_uteis**: Calcule o prazo em dias úteis usando a tabela de produtividade do SISP recuperada abaixo.
+                
+                **REGRAS E TABELAS DO SISP (Use estas informações para o cálculo):**
+                {dados_metricas}
+
+                - **data_prevista_entrega**: Calcule a data de entrega somando o `prazo_dias_uteis` à **Data Atual ({data_atual})**, considerando apenas dias úteis (segunda a sexta).
                 - Se o tipo de problema não for 'Melhoria' ou 'Evolutivo', retorne `null` para este campo.
             9.  **nivel_esforco**: Calcule o nível de esforço (Baixo, Médio, Alto) combinando a `complexidade` e a `estimativa_pontos_funcao`."""  # noqa: E501
         )
@@ -257,6 +283,10 @@ class AnalistaWorkflow:
                     "rcm_especifico": state["dados_rcm_especifico"]
                     or "Nenhum RCM específico mencionado.",
                     "diagnostico": state["diagnostico"],
+                    "dados_metricas": state.get(
+                        "dados_metricas", "Nenhuma métrica específica encontrada."
+                    ),
+                    "data_atual": data_atual,
                 }
             )
             return {"relatorio_final": relatorio}  # noqa: TRY300
@@ -311,6 +341,7 @@ class AnalistaWorkflow:
         workflow.add_node("identificar_e_buscar_rcm", self.identificar_e_buscar_rcm)
         workflow.add_node("buscar_no_historico", self.buscar_no_historico)
         workflow.add_node("consultar_manuais", self.consultar_manuais)
+        workflow.add_node("consultar_metricas", self.consultar_metricas)
         workflow.add_node("gerar_diagnostico", self.gerar_diagnostico)
         workflow.add_node("gerar_relatorio_final", self.gerar_relatorio_final)
 
@@ -319,7 +350,8 @@ class AnalistaWorkflow:
         workflow.add_edge("classificar_solicitacao", "identificar_e_buscar_rcm")
         workflow.add_edge("identificar_e_buscar_rcm", "buscar_no_historico")
         workflow.add_edge("buscar_no_historico", "consultar_manuais")
-        workflow.add_edge("consultar_manuais", "gerar_diagnostico")
+        workflow.add_edge("consultar_manuais", "consultar_metricas")
+        workflow.add_edge("consultar_metricas", "gerar_diagnostico")
         workflow.add_edge("gerar_diagnostico", "gerar_relatorio_final")
         workflow.add_edge("gerar_relatorio_final", END)
 
@@ -334,6 +366,7 @@ class AnalistaWorkflow:
             "dados_historico": None,
             "dados_rcm_especifico": None,
             "dados_manuais": None,
+            "dados_metricas": None,
             "diagnostico": None,
             "relatorio_final": None,
         }

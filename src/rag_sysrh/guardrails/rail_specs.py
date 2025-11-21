@@ -17,6 +17,10 @@ A pergunta está relacionada a algum dos seguintes tópicos?
 - Planejamento de projetos de software
 - Faturamento de projetos
 - Manuais técnicos do sistema
+- Solicitações de Tecnologia da Informação (TI)
+- Desenvolvimento e Manutenção de Sistemas
+- Melhorias e Correções de Software
+- Documentação de Requisitos
 
 Responda APENAS com o JSON.
 </prompt>
