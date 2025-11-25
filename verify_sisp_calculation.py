@@ -1,5 +1,12 @@
 import logging
 import os
+import sys
+from pathlib import Path
+
+# Add src to path
+SRC_PATH = Path(__file__).resolve().parent / "src"
+if str(SRC_PATH) not in sys.path:
+    sys.path.append(str(SRC_PATH))
 
 from dotenv import load_dotenv
 

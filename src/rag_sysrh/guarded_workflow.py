@@ -3,7 +3,6 @@ import sys
 from pathlib import Path
 from typing import TypedDict
 
-import guardrails as gd  # type: ignore
 from langchain_core.messages import HumanMessage  # type: ignore
 from langchain_openai import ChatOpenAI  # type: ignore
 from langgraph.graph import StateGraph  # type: ignore
@@ -14,7 +13,6 @@ if str(SRC_PATH) not in sys.path:
     sys.path.append(str(SRC_PATH))
 
 from rag_sysrh.analista_workflow import AnalistaWorkflow, RelatorioAnalise  # noqa: E402
-from rag_sysrh.guardrails.rail_specs import rail_spec_topical  # noqa: E402
 from rag_sysrh.main import get_tools  # noqa: E402
 
 llm = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4o"), temperature=0)
@@ -39,12 +37,12 @@ def check_topicality_node(state: GuardedState) -> GuardedState:
     print("---[VERSÃO CORRIGIDA DO WORKFLOW EM EXECUÇÃO]---")
 
     user_input = state["solicitacao_original"]
-    guard = gd.Guard.from_rail_string(rail_spec_topical)
-
     try:
-        # --- FIX: Manual Prompt Construction to bypass Guardrails API incompatibility ---
-        # We manually construct the prompt using the template from the RAIL spec
-        # and then parse the output. This avoids the "You must provide messages" error.
+        # --- FIX: Pydantic Validation Replacement ---
+        from pydantic import BaseModel
+
+        class TopicValidation(BaseModel):
+            is_on_topic: bool
 
         prompt_template = """
 A pergunta do usuário é:
@@ -62,7 +60,10 @@ A pergunta está relacionada a algum dos seguintes tópicos?
 - Melhorias e Correções de Software
 - Documentação de Requisitos
 
-Responda APENAS com o JSON.
+Responda APENAS com um JSON válido no seguinte formato:
+{{
+    "is_on_topic": true/false
+}}
 """
         formatted_prompt = prompt_template.format(user_input=user_input)
 
@@ -75,33 +76,17 @@ Responda APENAS com o JSON.
         elif "```" in llm_response:
             llm_response = llm_response.split("```")[1].split("```")[0].strip()
 
-        # Parse using Guardrails
-        validation_result = guard.parse(llm_response)
+        # Parse using Pydantic
+        validation_result = TopicValidation.model_validate_json(llm_response)
 
-        print(f"---[DEBUG GUARDRAIL] Input: {user_input[:100]}...")
-        print(f"---[DEBUG GUARDRAIL] LLM Response: {llm_response}")
-        print(
-            f"---[DEBUG GUARDRAIL] Validated Output: {validation_result.validated_output}"
-        )
-
-        if (
-            validation_result.validation_passed
-            and validation_result.validated_output["is_on_topic"]
-        ):
+        if validation_result.is_on_topic:
             print("---[GUARDRAIL]: OK. A pergunta está no tópico.---")
             return {**state, "is_on_topic": True}
 
-        # --- FAIL-OPEN FOR DEBUGGING ---
-        print("---[GUARDRAIL]: FALHOU, MAS FORÇANDO 'TRUE' PARA DEBUG.---")
-        return {**state, "is_on_topic": True}
-        # -------------------------------
-
-        # Se a validação passou mas o resultado foi 'false'
-        # print("---[GUARDRAIL]: FORA DO TÓPICO. Bloqueando fluxo.---")
-        # return {**state, "is_on_topic": False}
+        print("---[GUARDRAIL]: FORA DO TÓPICO. Bloqueando fluxo.---")
+        return {**state, "is_on_topic": False}
 
     except Exception as e:
-        # Este bloco agora só deve ser atingido por erros REAIS, não pela incompatibilidade de API.
         print(f"---[GUARDRAIL]: OCORREU UM ERRO INESPERADO NA VALIDAÇÃO: {e}---")
         return {**state, "is_on_topic": False}
 

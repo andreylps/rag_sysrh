@@ -1,0 +1,54 @@
+Encontrados 53 manuais:
+- Dicionário de dados do extrator.docx
+- Geração Protocolos Declaração de Bens (Levantamento Regras de Geração) atualizado em 24-02-2023.docx
+- UCS0083 - Emitir Aviso de Férias.docx
+- UCS0097 - Manter Comprovação de Reclusão.docx
+- UCS0478 - Manter Dados de Exceção do Calendário.docx
+- UCS0479 - Importar Dados de Exceção do Calendário.docx
+- UCS0588 - Emitir Escala Pesquisar Férias não Programadas.docx
+- UCS0621 - Manter Lei e Capitulação.docx
+- UCS0744 - Manter Manuais e Formulários Públicos.docx
+- UCS0745 - Consultar Homologadores de Processos Digitais.docx
+- UCS0760 - Aposentadoria.docx
+- UCS0761 - Atualização.docx
+- UCS0762 - Autenticacao.docx
+- UCS0762 - Proposta de Consignacao.docx
+- UCS0763 - Aceite de portabilidade.docx
+- UCS0763 - Autoridade Competente.docx
+- UCS0764 - Avaliação Semestral.docx
+- UCS0764 - Base de Consignações.docx
+- UCS0765 - Banco de Horas.docx
+- UCS0765 - Gerar Arquivo do Ponto Eletrônico.docx
+- UCS0766 - CNDeb - Saúde.docx
+- UCS0766 - Pesquisar Ocorrências no Mês - Ponto Eletrônico.docx
+- UCS0767 - Certificados.docx
+- UCS0767 - Importar Dados - Integração Ponto Eletrônico.docx
+- UCS0768 - Consignações.docx
+- UCS0768 - Gerenciar Ponto Eletrônico.docx
+- UCS0769 - Contribuição Previdenciária.docx
+- UCS0769 - Liquidação Antecipada.docx
+- UCS0770 - Controle de Frequencia.docx
+- UCS0771 - Dashboard.docx
+- UCS0772 - Declaração de Bens.docx
+- UCS0773 - Diarias.docx
+- UCS0774 - Email Telefone.docx
+- UCS0775 - Escalas.docx
+- UCS0776 - Eventos Capacitaçâo.docx
+- UCS0777 - Ficha Financeira.docx
+- UCS0778 - Formação.docx
+- UCS0779 - Frequencia Ponto Gestor.docx
+- UCS0781 - Licença Prêmio.docx
+- UCS0782 - Previsão de Férias.docx
+- UCS0783 - Pré-Agendamentde Perícia Médica.docx
+- UCS0784 - Página Inicial.docx
+- UCS0785 - Requerimentos.docx
+- UCS0786 - Elementos Relacionados à LGPD.docx
+- UCS0796 - Arquivo de Retorno.docx
+- UCS0797 - Pesquisar Log.docx
+- UCS0798 - Alterar Senha.docx
+- UCS0799 - Relatório de Repasse.docx
+- UCS0800 - Relatório de Desconto em Folha.docx
+- UCS0801 - Pesquisar servidor.docx
+- UCS0802 - Importar Consignações.docx
+- UCS0805 - Requerimentos Digitais.docx
+- UCS747 – Manter ACT - Admitido em Caráter Temporário.docx

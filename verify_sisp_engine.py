@@ -45,7 +45,7 @@ def verify_engine():
     deflator = 0.5
     print(f"\nCalculando com Deflator: {deflator}")
 
-    resultado = calculator.processar_contagem([item1, item2], deflator)
+    resultado = calculator.calcular_pf([item1, item2], deflator)
 
     print("\n--- Resultados ---")
     for item in resultado.itens_calculados:

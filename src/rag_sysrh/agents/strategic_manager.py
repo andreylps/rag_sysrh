@@ -83,8 +83,31 @@ class StrategicManagerAgent:
             "analysis": analise,
         }
 
-    def _generate_strategic_narrative(self, context: str) -> AnaliseEstrategica:
-        """Gera a narrativa estratégica usando o LLM."""
+    def run_strategic_analysis(
+        self, context_data: Dict[str, Any]
+    ) -> AnaliseEstrategica:
+        """
+        Gera a narrativa estratégica a partir de dados estruturados.
+        """
+        # Formata o contexto de dados para string
+        context_str = f"""
+        KPIs Globais (Período: {context_data.get("period", "N/A")}):
+        {context_data.get("kpis", {})}
+        
+        Filtros: Time={context_data.get("team", "N/A")}, Cliente={context_data.get("client", "N/A")}
+        
+        Tendência (Lead Time):
+        {context_data.get("trend", [])}
+        
+        Gargalos:
+        {context_data.get("bottlenecks", [])}
+        
+        Motivos de Recusa:
+        {context_data.get("rejections", [])}
+        
+        Financeiro:
+        {context_data.get("financials", {})}
+        """
 
         contexto_org = get_contexto_organizacional_completo()
 
@@ -111,4 +134,4 @@ class StrategicManagerAgent:
         )
 
         chain = prompt | self.llm.with_structured_output(AnaliseEstrategica)
-        return chain.invoke({"context": context})
+        return chain.invoke({"context": context_str})

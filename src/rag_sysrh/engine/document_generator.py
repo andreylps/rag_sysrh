@@ -1,15 +1,17 @@
 import datetime
 import logging
-import shutil
+import os
 from pathlib import Path
 from typing import Any
 
-import openpyxl
-import pandas as pd
 from docx import Document
-from openpyxl.worksheet.worksheet import Worksheet
+from dotenv import load_dotenv
+from langchain_neo4j import Neo4jGraph
 
-from rag_sysrh.engine.models import ItemFuncional, ResultadoSISP
+from rag_sysrh.engine.models import ResultadoSISP
+
+load_dotenv()
+
 
 logger = logging.getLogger(__name__)
 
@@ -89,9 +91,8 @@ class DocumentGenerator:
 
         return resultado
 
-    def gerar_memoria_calculo(self, resultado: ResultadoSISP) -> Path:
+    def gerar_memoria_calculo(self, resultado: ResultadoSISP, rcm_id: str) -> Path:
         """Gera a memória de cálculo e retorna o caminho."""
-        rcm_id = "TEMP_ID"  # Deveria vir do state, mas por enquanto fixo ou gerado
         output_dir = Path("data/resultado_analise") / rcm_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -109,6 +110,45 @@ class DocumentGenerator:
                 return Path("ERRO_GERACAO_EXCEL")
         return Path("TEMPLATE_NAO_ENCONTRADO")
 
+    def _get_next_rcm_id(self) -> tuple[int, int]:
+        """
+        Consulta o Neo4j para obter o próximo número sequencial de RCM para o ano atual.
+        Retorna uma tupla (sequencial, ano).
+        """
+        try:
+            graph = Neo4jGraph(
+                url=os.getenv("NEO4J_URI"),
+                username=os.getenv("NEO4J_USERNAME"),
+                password=os.getenv("NEO4J_PASSWORD"),
+            )
+            now = datetime.datetime.now()
+            ano_atual = now.year
+
+            # Busca o maior ID de RCM do ano atual
+            # Assumindo que o ID no banco é salvo como string "XXXX/YYYY" ou similar,
+            # ou que existe uma propriedade 'sequencial' e 'ano'.
+            # Vamos buscar por padrão de string se não houver propriedades separadas.
+            # Mas para garantir, vamos tentar buscar o nó com maior sequencial.
+
+            query = """
+            MATCH (r:RCM)
+            WHERE r.ano = $ano
+            RETURN max(r.sequencial) as max_seq
+            """
+            result = graph.query(query, params={"ano": ano_atual})
+
+            max_seq = 0
+            if result and result[0]["max_seq"] is not None:
+                max_seq = result[0]["max_seq"]
+
+            next_seq = max_seq + 1
+            return next_seq, ano_atual
+
+        except Exception as e:
+            logger.error(f"Erro ao obter próximo ID de RCM: {e}")
+            # Fallback para evitar falha total, mas idealmente não deveria acontecer
+            return 9999, datetime.datetime.now().year
+
     def gerar_rcm(
         self,
         solicitacao: str,
@@ -117,161 +157,47 @@ class DocumentGenerator:
         risco: Any = None,
     ) -> Path:
         """Gera a RCM e retorna o caminho."""
-        rcm_id = "TEMP_ID"
-        output_dir = Path("data/resultado_analise") / rcm_id
+
+        # 1. Obtém o próximo ID sequencial
+        seq, ano = self._get_next_rcm_id()
+        rcm_id_formatted = f"{seq:04d}/{ano}"
+
+        # Título da RCM (Pode ser extraído da solicitação ou passado como argumento)
+        # Vamos tentar extrair um título curto ou usar um genérico
+        titulo_rcm = "ALTERAÇÃO NO SISTEMA"  # Default
+        if resultado.itens_calculados:
+            # Usa o nome da primeira função como base ou algo similar
+            titulo_rcm = f"ALTERAÇÃO - {resultado.itens_calculados[0].nome.upper()}"
+
+        # Nome do arquivo: XXXX/ANO - TÍTULO.docx
+        # Windows não aceita '/' em nome de arquivo. Vamos usar '-' ou '_'.
+        # O user pediu "XXXX/ANO - ...", mas isso é caminho de pasta ou nome de arquivo?
+        # Se for nome de arquivo, '/' é proibido. Vou usar '-' no lugar da barra para o arquivo físico.
+        filename = f"{seq:04d}_{ano} - {titulo_rcm}.docx"
+
+        # Cria diretório se não existir
+        output_dir = Path("data/resultado_analise") / f"{seq:04d}_{ano}"
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        word_path = output_dir / f"RCM_{rcm_id}.docx"
+        word_path = output_dir / filename
 
         if self.word_template:
             try:
-                self._generate_word(self.word_template, word_path, resultado, rcm_id)
+                self._generate_word(
+                    self.word_template,
+                    word_path,
+                    resultado,
+                    rcm_id_formatted,
+                    solicitacao,
+                    diagnostico,
+                    risco,
+                    titulo_rcm,
+                )
                 return word_path
             except Exception as e:
                 logger.error(f"Erro ao gerar Word: {e}")
                 return Path("ERRO_GERACAO_WORD")
         return Path("TEMPLATE_NAO_ENCONTRADO")
-
-    def _generate_excel(
-        self,
-        template_path: Path,
-        output_path: Path,
-        resultado: ResultadoSISP,
-        rcm_id: str,
-    ):
-        """Preenche a planilha Excel."""
-        # Tenta carregar o template. Se for .xls, converte para .xlsx via pandas (perde fórmulas, mas mantém dados)
-        # Se for .xlsx, usa openpyxl (mantém fórmulas).
-
-        wb = None
-        is_xlsm = template_path.suffix.lower() == ".xlsm"
-
-        if template_path.suffix.lower() == ".xls":
-            logger.warning(
-                "Template .xls detectado. Convertendo para .xlsx (Fórmulas podem ser perdidas)."
-            )
-            try:
-                # Lê o .xls com pandas
-                dfs = pd.read_excel(template_path, sheet_name=None)
-
-                # Cria novo workbook .xlsx
-                wb = openpyxl.Workbook()
-                # Remove a aba padrão
-                if "Sheet" in wb.sheetnames:
-                    del wb["Sheet"]
-
-                # Recria as abas
-                for sheet_name, df in dfs.items():
-                    ws = wb.create_sheet(sheet_name)
-                    # Escreve cabeçalhos
-                    for col_idx, col_name in enumerate(df.columns, 1):
-                        ws.cell(row=1, column=col_idx, value=col_name)
-                    # Escreve dados
-                    for r_idx, row in enumerate(df.itertuples(index=False), 2):
-                        for c_idx, value in enumerate(row, 1):
-                            ws.cell(row=r_idx, column=c_idx, value=value)
-
-            except Exception as e:
-                logger.error(f"Erro na conversão .xls -> .xlsx: {e}")
-                # Fallback: cria novo em branco
-                wb = openpyxl.Workbook()
-                wb.create_sheet("Funções")
-                wb.create_sheet("Contagem")
-        else:
-            # .xlsx ou .xlsm nativo
-            shutil.copy(template_path, output_path)
-            try:
-                # Se for .xlsm, precisamos avisar o openpyxl para manter o VBA
-                wb = openpyxl.load_workbook(output_path, keep_vba=is_xlsm)
-            except Exception as e:
-                logger.error(f"Erro ao abrir arquivo Excel: {e}")
-                wb = openpyxl.Workbook()
-
-        # Aba Funções (Preenchimento Estrito)
-        # Colunas identificadas:
-        # A=Casos de Uso, B=Função, C=Tipo, D=(I/A/E), E=TD(DER), F=AR(RLR),
-        # G=Complexidade, H=PF, I=PF Deflator, J=Obs
-
-        sheet_name = "Funções" if "Funções" in wb.sheetnames else "FUNÇÕES"
-        if sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            deflator = resultado.pf_liquido_total / (resultado.pf_bruto_total or 1)
-            self._fill_functions_sheet_strict(ws, resultado.itens_calculados, deflator)
-
-        # Aba Contagem (Resumo)
-        sheet_name_cont = "Contagem" if "Contagem" in wb.sheetnames else "CONTAGEM"
-        if sheet_name_cont in wb.sheetnames:
-            ws = wb[sheet_name_cont]
-            self._fill_summary_sheet(ws, resultado, rcm_id)
-
-        wb.save(output_path)
-
-    def _fill_functions_sheet_strict(
-        self, ws: Worksheet, itens: list[ItemFuncional], deflator: float
-    ):
-        """Preenche a lista de funções seguindo o layout estrito do modelo."""
-        # Encontra a linha de cabeçalho (procura por "Função" ou "Nome")
-        start_row = 2  # Default
-        for row in ws.iter_rows(min_row=1, max_row=10):
-            for cell in row:
-                if (
-                    cell.value
-                    and isinstance(cell.value, str)
-                    and "Função" in cell.value
-                ):
-                    start_row = cell.row + 1
-                    break
-            if start_row > 2:
-                break
-
-        current_row = start_row
-
-        for item in itens:
-            # Col A: Casos de Uso (Descrição)
-            ws.cell(row=current_row, column=1, value=item.descricao)
-            # Col B: Nome da Função
-            ws.cell(row=current_row, column=2, value=item.nome)
-            # Col C: Tipo (ALI, AIE, etc)
-            ws.cell(row=current_row, column=3, value=item.tipo.value)
-            # Col D: (I/A/E) - Default "I" (Inclusão) ou "A" se for manutenção
-            ws.cell(row=current_row, column=4, value="I")
-            # Col E: TD (DER)
-            ws.cell(row=current_row, column=5, value=item.der_estimado)
-            # Col F: AR (RLR)
-            ws.cell(row=current_row, column=6, value=item.rlr_estimado)
-            # Col G: Complexidade
-            ws.cell(
-                row=current_row,
-                column=7,
-                value=item.complexidade.value if item.complexidade else "",
-            )
-            # Col H: PF Bruto
-            ws.cell(row=current_row, column=8, value=item.pf_bruto)
-            # Col I: PF Líquido (Com Deflator)
-            # Se o Excel tiver fórmula, isso vai sobrescrever.
-            # Mas como convertemos de .xls, a fórmula sumiu. Então PRECISAMOS escrever.
-            pf_liq = item.pf_bruto * deflator
-            ws.cell(row=current_row, column=9, value=pf_liq)
-            # Col J: Observações
-            ws.cell(row=current_row, column=10, value=item.justificativa_contagem)
-
-            current_row += 1
-
-    def _fill_summary_sheet(self, ws: Worksheet, resultado: ResultadoSISP, rcm_id: str):
-        """Substitui placeholders na aba de contagem."""
-        replacements = {
-            "<RCM>": rcm_id,
-            "<PF_BRUTO>": f"{resultado.pf_bruto_total:.2f}",
-            "<PF_LIQUIDO>": f"{resultado.pf_liquido_total:.2f}",
-            "<PRAZO>": str(resultado.prazo_estimado_dias),
-        }
-
-        for row in ws.iter_rows():
-            for cell in row:
-                if cell.value and isinstance(cell.value, str):
-                    for key, val in replacements.items():
-                        if key in cell.value:
-                            cell.value = cell.value.replace(key, val)
 
     def _generate_word(
         self,
@@ -279,44 +205,48 @@ class DocumentGenerator:
         output_path: Path,
         resultado: ResultadoSISP,
         rcm_id: str,
+        solicitacao: str = "",
+        diagnostico: str = "",
+        risco: Any = None,
+        titulo_rcm: str = "",
     ):
         """Preenche o documento Word."""
         doc = Document(template_path)
 
-        # Formatação do Cabeçalho: <Sigla Módulo> - <Número RCM> - <Ano>
-        # Ex: FUNC - 1234 - 2024
         now = datetime.datetime.now()
-        ano = now.year
         mes_ano = now.strftime("%m/%Y")
 
-        # Tenta extrair sigla do RCM ID ou usa default
-        sigla = "MOD"
-        numero = rcm_id
-        if "-" in rcm_id:
-            parts = rcm_id.split("-")
-            if len(parts) >= 2:
-                # Assumindo formato MOD-1234
-                # Mas o user pediu <Sigla Módulo> - <Número RCM>
-                pass
-
-        header_str = f"{sigla} - {numero} - {ano}"
-        title_str = f"{sigla} - Nome do Módulo"  # Placeholder, ideal vir do input
+        # Formata a análise de risco se existir
+        analise_risco_str = "N/A"
+        if risco:
+            analise_risco_str = (
+                f"Impacto Backend: {risco.impacto_backend}/5\n"
+                f"Impacto Frontend: {risco.impacto_frontend}/5\n"
+                f"Risco Migração: {risco.risco_migracao}/5\n"
+                f"Esforço Testes: {risco.esforco_testes}/5\n"
+                f"Incerteza: {risco.incerteza_requisitos}/5\n"
+                f"Justificativa: {risco.justificativa_geral}"
+            )
 
         replacements = {
             "<RCM>": rcm_id,
             "<PF_TOTAL>": f"{resultado.pf_liquido_total:.2f}",
             "<PRAZO_DIAS>": str(resultado.prazo_estimado_dias),
             "<DATA>": mes_ano,
-            "<HEADER_RCM>": header_str,
-            "<TITULO_MODULO>": title_str,
-            # Adicione placeholders que o usuário mencionou se souber os nomes exatos no doc
+            "<HEADER_RCM>": f"RCM {rcm_id}",
+            "<TITULO_MODULO>": titulo_rcm,
+            "<SOLICITACAO>": solicitacao,
+            "<DIAGNOSTICO>": diagnostico,
+            "<SOLUCAO>": diagnostico,  # Muitas vezes diagnóstico e solução se misturam, ou podemos separar se tivermos o campo
+            "<ANALISE_RISCO>": analise_risco_str,
+            "<RISCO>": analise_risco_str,  # Alias
         }
 
         # Substituição em parágrafos
         for para in doc.paragraphs:
             for key, val in replacements.items():
                 if key in para.text:
-                    para.text = para.text.replace(key, val)
+                    para.text = para.text.replace(key, str(val))
 
         # Substituição em tabelas
         for table in doc.tables:
@@ -325,19 +255,14 @@ class DocumentGenerator:
                     for para in cell.paragraphs:
                         for key, val in replacements.items():
                             if key in para.text:
-                                para.text = para.text.replace(key, val)
+                                para.text = para.text.replace(key, str(val))
 
         # Inserir Tabela na seção "Estimativa de Esforço"
-        # Procura o parágrafo "Estimativa de Esforço"
-        # (Lógica simplificada: Adiciona tabela no final com título claro)
-
-        # Fallback: Adiciona tabela no final (Melhor que nada)
+        # (Mantém lógica anterior de adicionar tabela no final)
         doc.add_heading(
             "Detalhamento da Estimativa de Esforço (Memória de Cálculo)", level=2
         )
 
-        # Tabela com mesmo layout do Excel:
-        # Item | Função | Tipo | (I/A/E) | TD | AR | Complex | PF | PF Def | Obs
         table = doc.add_table(rows=1, cols=10)
         table.style = "Table Grid"
         hdr_cells = table.rows[0].cells
@@ -374,3 +299,65 @@ class DocumentGenerator:
             row_cells[9].text = str(item.justificativa_contagem)
 
         doc.save(output_path)
+
+    def _generate_excel(
+        self,
+        template_path: Path,
+        output_path: Path,
+        resultado: ResultadoSISP,
+        rcm_id: str,
+    ):
+        """Preenche o documento Excel."""
+        import openpyxl
+
+        wb = openpyxl.load_workbook(template_path)
+        ws = wb.active
+
+        # Substituição simples em células
+        replacements = {
+            "<RCM>": rcm_id,
+            "<PF_TOTAL>": f"{resultado.pf_liquido_total:.2f}",
+            "<PRAZO_DIAS>": str(resultado.prazo_estimado_dias),
+        }
+
+        for row in ws.iter_rows():
+            for cell in row:
+                if cell.value and isinstance(cell.value, str):
+                    for key, val in replacements.items():
+                        if key in cell.value:
+                            cell.value = cell.value.replace(key, str(val))
+
+        # Adiciona ou usa aba de detalhamento
+        if "Detalhamento" in wb.sheetnames:
+            ws_det = wb["Detalhamento"]
+            # Limpa dados existentes se for template reutilizado (opcional, aqui apenas append)
+        else:
+            ws_det = wb.create_sheet("Detalhamento")
+            ws_det.append(
+                [
+                    "Função",
+                    "Tipo",
+                    "DER",
+                    "RLR",
+                    "Complexidade",
+                    "PF Bruto",
+                    "PF Líquido",
+                ]
+            )
+
+        deflator = resultado.pf_liquido_total / (resultado.pf_bruto_total or 1)
+
+        for item in resultado.itens_calculados:
+            ws_det.append(
+                [
+                    item.nome,
+                    item.tipo.value,
+                    item.der_estimado,
+                    item.rlr_estimado,
+                    item.complexidade.value if item.complexidade else "",
+                    item.pf_bruto,
+                    item.pf_bruto * deflator,
+                ]
+            )
+
+        wb.save(output_path)

@@ -1,33 +1,33 @@
+import os
 import sys
+import traceback
 from pathlib import Path
 
+from dotenv import load_dotenv
+from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, ValidationError
+
 # Add src to path
-SRC_PATH = Path(__file__).resolve().parent.parent / "src"
+SRC_PATH = Path(__file__).resolve().parent / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.append(str(SRC_PATH))
 
 
+class TopicValidation(BaseModel):
+    is_on_topic: bool
+
+
 def test_guardrail():
-    print("--- Testing Guardrail Fix (Manual Flow) ---")
-
-    import os
-
-    import guardrails as gd
-    from dotenv import load_dotenv
-    from langchain_core.messages import HumanMessage
-    from langchain_openai import ChatOpenAI
+    print("--- Testing Guardrail Replacement (Pydantic) ---")
 
     # Load environment variables
     project_root = Path(__file__).resolve().parent
     load_dotenv(project_root / ".env")
 
-    from rag_sysrh.guardrails.rail_specs import rail_spec_topical
-
     llm = ChatOpenAI(model=os.getenv("OPENAI_MODEL", "gpt-4o"), temperature=0)
-    guard = gd.Guard.from_rail_string(rail_spec_topical)
 
-    # Manual prompt construction based on rail_spec_topical
-    # We are extracting the prompt template manually for now to verify the flow
+    # Prompt Template
     prompt_template = """
 A pergunta do usuário é:
 {user_input}
@@ -39,78 +39,60 @@ A pergunta está relacionada a algum dos seguintes tópicos?
 - Planejamento de projetos de software
 - Faturamento de projetos
 - Manuais técnicos do sistema
+- Solicitações de Tecnologia da Informação (TI)
+- Desenvolvimento e Manutenção de Sistemas
+- Melhorias e Correções de Software
+- Documentação de Requisitos
 
-Responda APENAS com o JSON.
+Responda APENAS com um JSON válido no seguinte formato:
+{{
+    "is_on_topic": true/false
+}}
 """
 
-    # Test case 1: On-topic
-    input_on_topic = "Como faço para solicitar férias?"
-    print(f"\nInput: {input_on_topic}")
-    try:
-        formatted_prompt = prompt_template.format(user_input=input_on_topic)
-        print(f"--- Prompt sent to LLM ---\n{formatted_prompt}\n----------------")
+    test_cases = [
+        {"input": "Como faço para solicitar férias?", "expected_on_topic": True},
+        {"input": "Qual a capital da Austrália?", "expected_on_topic": False},
+        {
+            "input": "Quero cadastrar uma nova RCM para o módulo de pagamentos.",
+            "expected_on_topic": True,
+        },
+    ]
 
-        llm_response = llm.invoke([HumanMessage(content=formatted_prompt)]).content
-        print(f"--- LLM Response (Raw) ---\n{llm_response}\n----------------")
+    for i, case in enumerate(test_cases):
+        user_input = case["input"]
+        expected = case["expected_on_topic"]
+        print(f"\n[Test Case {i + 1}] Input: {user_input}")
 
-        # Clean up markdown code blocks if present
-        if "```json" in llm_response:
-            llm_response = llm_response.split("```json")[1].split("```")[0].strip()
-        elif "```" in llm_response:
-            llm_response = llm_response.split("```")[1].split("```")[0].strip()
+        try:
+            formatted_prompt = prompt_template.format(user_input=user_input)
 
-        print(f"--- LLM Response (Cleaned) ---\n{llm_response}\n----------------")
+            # 1. Invoke LLM
+            llm_response = llm.invoke([HumanMessage(content=formatted_prompt)]).content
 
-        # Parse using Guardrails
-        validation_result = guard.parse(llm_response)
-        print(f"Validation Passed: {validation_result.validation_passed}")
-        print(f"Validated Output: {validation_result.validated_output}")
+            # 2. Clean Response (Robustness)
+            if "```json" in llm_response:
+                llm_response = llm_response.split("```json")[1].split("```")[0].strip()
+            elif "```" in llm_response:
+                llm_response = llm_response.split("```")[1].split("```")[0].strip()
 
-        if (
-            validation_result.validated_output
-            and validation_result.validated_output.get("is_on_topic")
-        ):
-            print("SUCCESS: Correctly identified as on-topic.")
-        else:
-            print("FAILURE: Incorrectly identified as off-topic.")
+            # 3. Parse with Pydantic
+            validation_result = TopicValidation.model_validate_json(llm_response)
+            is_on_topic = validation_result.is_on_topic
 
-    except Exception as e:
-        print(f"ERROR in Test Case 1: {e}")
-        import traceback
+            print(f"  LLM Response: {llm_response}")
+            print(f"  Validated is_on_topic: {is_on_topic}")
 
-        traceback.print_exc()
+            if is_on_topic == expected:
+                print(f"  ✅ SUCCESS: Result matches expectation ({expected}).")
+            else:
+                print(f"  ❌ FAILURE: Result {is_on_topic} != Expectation {expected}.")
 
-    # Test case 2: Off-topic
-    input_off_topic = "Qual a capital da Austrália?"
-    print(f"\nInput: {input_off_topic}")
-    try:
-        formatted_prompt = prompt_template.format(user_input=input_off_topic)
-        llm_response = llm.invoke([HumanMessage(content=formatted_prompt)]).content
-
-        # Clean up markdown code blocks if present
-        if "```json" in llm_response:
-            llm_response = llm_response.split("```json")[1].split("```")[0].strip()
-        elif "```" in llm_response:
-            llm_response = llm_response.split("```")[1].split("```")[0].strip()
-
-        print(f"--- LLM Response (Cleaned) ---\n{llm_response}\n----------------")
-
-        validation_result = guard.parse(llm_response)
-        print(f"Validation Passed: {validation_result.validation_passed}")
-        print(f"Validated Output: {validation_result.validated_output}")
-
-        if (
-            validation_result.validated_output
-            and not validation_result.validated_output.get("is_on_topic")
-        ):
-            print("SUCCESS: Correctly identified as off-topic.")
-        else:
-            print("FAILURE: Incorrectly identified as on-topic.")
-    except Exception as e:
-        print(f"ERROR in Test Case 2: {e}")
-        import traceback
-
-        traceback.print_exc()
+        except ValidationError as e:
+            print(f"  ❌ VALIDATION ERROR: {e}")
+        except Exception as e:
+            print(f"  ❌ ERROR: {e}")
+            traceback.print_exc()
 
 
 if __name__ == "__main__":

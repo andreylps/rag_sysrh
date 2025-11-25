@@ -104,3 +104,76 @@ The question is:
                 "resposta": f"Desculpe, não consegui analisar os dados. Erro: {e}",
                 "cypher": "Erro na geração",
             }
+
+    async def analisar_dados_json(self, dados: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analisa um conjunto de dados já extraídos e gera insights em formato JSON.
+        Não executa queries Cypher, apenas usa o LLM para interpretação.
+        """
+        import json
+
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        prompt_system = """
+        Você é um Especialista em BI e Análise de Dados para um Dashboard Executivo.
+        Sua tarefa é analisar os dados fornecidos e gerar um relatório JSON estrito.
+        NÃO use markdown. NÃO inclua explicações fora do JSON.
+        """
+
+        prompt_user = f"""
+        Analise os seguintes dados do dashboard:
+        {json.dumps(dados, indent=2, ensure_ascii=False)}
+
+        Gere um JSON com esta estrutura exata:
+        {{
+            "resumo": "Resumo executivo (max 2 frases)",
+            "analiseProducao": {{
+                "pontosFortes": ["Ponto 1", "Ponto 2"],
+                "atencao": ["Ponto 1", "Ponto 2"]
+            }},
+            "analiseFinanceira": {{
+                "insights": ["Insight 1", "Insight 2"]
+            }},
+            "recomendacoes": [
+                {{ "titulo": "Ação", "descricao": "Detalhe" }}
+            ],
+            "alertas": [
+                {{ "titulo": "Alerta", "descricao": "Detalhe", "tipo": "erro" }}
+            ],
+            "previsao": {{
+                "metrica1Label": "Eficiência Est.",
+                "metrica1Value": "00%",
+                "metrica2Label": "Receita Est.",
+                "metrica2Value": "R$ 00"
+            }}
+        }}
+        """
+
+        try:
+            response = await self.llm.ainvoke(
+                [
+                    SystemMessage(content=prompt_system),
+                    HumanMessage(content=prompt_user),
+                ]
+            )
+
+            texto_resposta = response.content
+
+            # Limpeza básica de markdown
+            if "```json" in texto_resposta:
+                texto_resposta = texto_resposta.split("```json")[1].split("```")[0]
+            elif "```" in texto_resposta:
+                texto_resposta = texto_resposta.split("```")[1].split("```")[0]
+
+            return json.loads(texto_resposta)
+
+        except Exception as e:
+            logging.error(f"Erro na análise direta de JSON: {e}")
+            return {
+                "resumo": "Erro ao gerar análise.",
+                "analiseProducao": {"pontosFortes": [], "atencao": []},
+                "analiseFinanceira": {"insights": []},
+                "recomendacoes": [],
+                "alertas": [{"titulo": "Erro IA", "descricao": str(e), "tipo": "erro"}],
+                "previsao": {},
+            }

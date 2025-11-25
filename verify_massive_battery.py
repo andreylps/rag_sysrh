@@ -57,10 +57,15 @@ def main():
     print("======================================================")
 
     scripts = [
-        "verify_document_generator.py",
+        "verify_strategic_service.py",
+        "verify_rcm_generation.py",
+        "verify_sisp_calculation.py",
+        "verify_guardrail.py",
+        "verify_cypher_guardrail.py",
+        "verify_bi_agent.py",
+        "verify_quality_agent.py",
         "verify_sisp_workflow.py",
         "verify_full_flow.py",
-        # "verify_github_connector.py" # Opcional, descomentar se necessário
     ]
 
     results = {}

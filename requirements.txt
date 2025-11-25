@@ -414,3 +414,5 @@ yarl==1.22.0
 zstandard==0.25.0
     # via langsmith
 PyGithub==2.1.1
+fastapi
+uvicorn

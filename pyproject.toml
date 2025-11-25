@@ -38,6 +38,13 @@ dependencies = [
     "neo4j",
     "openai",
     "pydantic",
+    "guardrails-ai",
+    "uvicorn",
+    "fastapi",
+    "python-multipart",
+    "PyGithub",
+    "watchdog",
+    "duckduckgo-search",
 ]
 
 [tool.setuptools]

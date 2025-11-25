@@ -129,7 +129,16 @@ class AnalistaWorkflow:
     def classificar_solicitacao(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 1: Classificando a solicitação...")  # noqa: LOG015
         prompt = ChatPromptTemplate.from_template(
-            "Classifique a seguinte solicitação de usuário em uma das categorias: 'Dúvida de Procedimento', 'Relato de Erro', 'Solicitação de Melhoria'.\n\nSolicitação: {solicitacao}"  # noqa: E501
+            """Classifique a solicitação do usuário em uma das categorias abaixo:
+
+            <categorias>
+            - 'Dúvida de Procedimento': O usuário não sabe como fazer algo ou pergunta sobre regras.
+            - 'Relato de Erro': O sistema apresentou falha, mensagem de erro ou comportamento inesperado.
+            - 'Solicitação de Melhoria': O usuário pede uma nova funcionalidade, alteração de campo ou relatório novo.
+            </categorias>
+
+            Solicitação: {solicitacao}
+            Classificação:"""
         )
         chain = prompt | self.llm
         classificacao = chain.invoke(
@@ -176,23 +185,43 @@ class AnalistaWorkflow:
 
     def consultar_metricas(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 3.5: Consultando guia de métricas SISP...")
-        # Em vez de consultar o RAG, retornamos a tabela oficial SISP 2.3 Tabela 9 diretamente
-        # para garantir precisão absoluta na estimativa de prazos.
-        tabela_sisp = """
-        SISP 2.3 - Tabela 9: Estimativa de Prazo de Projetos menores que 100 PF
-        | Tamanho do Projeto (PF) | Prazo Máximo (Dias Úteis) - Complex. Baixa | Prazo Máximo (Dias Úteis) - Complex. Média |
-        | :--- | :--- | :--- |
-        | Até 10 PF | 9 dias | 15 dias |
-        | De 11 PF a 20 PF | 18 dias | 30 dias |
-        | De 21 PF a 30 PF | 27 dias | 45 dias |
-        | De 31 PF a 40 PF | 36 dias | 60 dias |
-        | De 41 PF a 50 PF | 45 dias | 75 dias |
-        | De 51 PF a 60 PF | 54 dias | 90 dias |
-        | De 61 PF a 70 PF | 63 dias | 105 dias |
-        | De 71 PF a 85 PF | 70 dias | 110 dias |
-        | De 86 PF a 99 PF | 79 dias | 110 dias |
+        # Retornamos as regras completas do SISP 2.3 para contagem de Pontos de Função
+        regras_sisp = """
+        REGRAS DE CONTAGEM SISP 2.3 (Roteiro de Métricas):
+
+        1. TABELA DE VALORES DE PONTOS DE FUNÇÃO (PF):
+        | Tipo de Função | Complexidade Baixa | Complexidade Média | Complexidade Alta |
+        | :--- | :---: | :---: | :---: |
+        | ALI (Arquivo Lógico Interno) | 7 PF | 10 PF | 15 PF |
+        | AIE (Arquivo de Interface Externa) | 5 PF | 7 PF | 10 PF |
+        | EE (Entrada Externa) | 3 PF | 4 PF | 6 PF |
+        | SE (Saída Externa) | 4 PF | 5 PF | 7 PF |
+        | CE (Consulta Externa) | 3 PF | 4 PF | 6 PF |
+
+        2. TABELA DE COMPLEXIDADE - FUNÇÕES DE DADOS (ALI/AIE):
+        | TR (Tipos de Registro) | 1 a 19 TD (Tipos de Dado) | 20 a 50 TD | > 50 TD |
+        | :--- | :---: | :---: | :---: |
+        | 1 TR | Baixa | Baixa | Média |
+        | 2 a 5 TR | Baixa | Média | Alta |
+        | > 5 TR | Média | Alta | Alta |
+
+        3. TABELA DE COMPLEXIDADE - FUNÇÕES DE TRANSAÇÃO (EE/SE/CE):
+        | AR (Arquivos Referenciados) | 1 a 4 TD (Tipos de Dado) | 5 a 15 TD | > 15 TD |
+        | :--- | :---: | :---: | :---: |
+        | 0 a 1 AR | Baixa | Baixa | Média |
+        | 2 a 3 AR | Baixa | Média | Alta |
+        | > 3 AR | Média | Alta | Alta |
+
+        4. TABELA DE PRAZOS (SISP 2.3 - Tabela 9):
+        | Tamanho (PF) | Prazo Máx (Dias) - Baixa | Prazo Máx (Dias) - Média |
+        | :--- | :---: | :---: |
+        | Até 10 PF | 9 | 15 |
+        | 11-20 PF | 18 | 30 |
+        | 21-30 PF | 27 | 45 |
+        | 31-40 PF | 36 | 60 |
+        | 41-50 PF | 45 | 75 |
         """
-        return {"dados_metricas": tabela_sisp}
+        return {"dados_metricas": regras_sisp}
 
     def gerar_diagnostico(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 4: Gerando diagnóstico...")  # noqa: LOG015
@@ -202,25 +231,30 @@ class AnalistaWorkflow:
         manuais_str = str(state.get("dados_manuais", ""))[:4000]
 
         prompt = ChatPromptTemplate.from_template(
-            """Você é um analista de sistemas sênior. Com base nas informações coletadas, gere um diagnóstico técnico detalhado para que a equipe de desenvolvimento possa atuar.
+            """Você é um analista de sistemas sênior. Com base nas informações coletadas, gere um diagnóstico técnico detalhado.
 
+            <contexto>
             Solicitação Original: {solicitacao}
             Classificação: {classificacao}
-            Dados do Histórico (solicitações parecidas - RESUMIDO): {historico}
-            Dados de RCM Específico (se aplicável): {rcm_especifico}
-            Dados dos Manuais (regras e procedimentos - RESUMIDO): {manuais}
+            Dados do Histórico (RESUMIDO): {historico}
+            Dados de RCM Específico: {rcm_especifico}
+            Dados dos Manuais (RESUMIDO): {manuais}
+            </contexto>
 
-            **Instruções:**
-            1.  Se a **Classificação** for 'Solicitação de Melhoria' (demanda evolutiva), o diagnóstico deve ser impecável e servir de base para a criação de uma RCM (Requisição de Mudança). Detalhe os seguintes pontos:
-                - **Análise do Problema:** Descreva a necessidade de negócio e o valor que a nova funcionalidade agregará.
-                - **Requisitos Técnicos para Solução:** Detalhe os componentes necessários (novas telas, campos, botões, alterações em APIs, etc.) e as regras de negócio que devem ser implementadas.
-                - **Impacto:** Mencione outras partes do sistema que podem ser impactadas.
+            <instrucoes>
+            Pense passo a passo (Chain-of-Thought) antes de responder.
 
-            2.  Se a **Classificação** for 'Relato de Erro' ou 'Dúvida de Procedimento', o diagnóstico deve focar em:
-                - **Análise do Problema:** Descreva o comportamento inesperado ou a dúvida do usuário.
-                - **Causa Raiz:** Identifique a possível causa do erro (ex: dados inconsistentes, falha em regra de negócio) ou aponte o procedimento correto com base nos manuais.
+            1. Se Classificação == 'Solicitação de Melhoria':
+               - Descreva a necessidade de negócio.
+               - Liste os Requisitos Técnicos (telas, campos, APIs).
+               - Identifique impactos no sistema.
 
-            **Diagnóstico Técnico Detalhado:**"""  # noqa: E501
+            2. Se Classificação == 'Relato de Erro' ou 'Dúvida de Procedimento':
+               - Analise o comportamento inesperado.
+               - Identifique a Causa Raiz (dados, regra, procedimento incorreto).
+            </instrucoes>
+
+            Diagnóstico Técnico Detalhado:"""
         )
         chain = prompt | self.llm
         diagnostico_str = chain.invoke(
@@ -243,36 +277,36 @@ class AnalistaWorkflow:
         data_atual = datetime.now().strftime("%d/%m/%Y")
 
         prompt = ChatPromptTemplate.from_template(
-            """Gere um relatório de análise estruturado com base em todo o contexto. Ignore o campo `solicitacao_id`, ele será preenchido depois.
-            Seu objetivo é preencher todos os campos do modelo `RelatorioAnalise`, exceto `solicitacao_id`.
+            """Gere um relatório de análise estruturado com base em todo o contexto. Ignore o campo `solicitacao_id`.
 
             **CONTEXTO TEMPORAL:**
             - Data Atual: {data_atual}
             - Todas as estimativas de data devem ser calculadas a partir desta data.
 
+            <contexto>
             Solicitação Original: {solicitacao}
             Classificação: {classificacao}
-            Dados de RCM Específico (se aplicável): {rcm_especifico}
+            Dados de RCM Específico: {rcm_especifico}
             Diagnóstico Técnico: {diagnostico}
+            </contexto>
+
+            <regras_sisp>
+            {dados_metricas}
+            </regras_sisp>
 
             Instruções para preenchimento:
-            1.  **tipo_problema**: Use a classificação já fornecida (Dúvida, Erro, Melhoria).
-            2.  **tipo_solicitacao**: Com base no contexto do problema, classifique a solicitação em uma das seguintes categorias: 'Evolutivo', 'Corretivo', 'Operacao', 'Transferencia de conhecimento', 'Correcao de dados', 'Migracao', 'Garantia'.
-            3.  **resumo_problema**: Crie um resumo conciso do problema.
+            1.  **tipo_problema**: Use a classificação fornecida.
+            2.  **tipo_solicitacao**: Classifique como 'Evolutivo', 'Corretivo', 'Operacao', etc.
+            3.  **resumo_problema**: Resumo conciso.
             4.  **diagnostico**: Use o diagnóstico técnico fornecido.
-            5.  **complexidade**: Com base no diagnóstico e, PRINCIPALMENTE, nos dados do RCM específico (se houver), classifique a complexidade como 'Baixa', 'Média', 'Alta' ou 'Ultra'. Se um RCM similar teve esforço alto, a complexidade deve ser compatível.
-            6.  **solucao_sugerida**: Descreva os passos ou a solução técnica recomendada.
-            7.  **esforco_resolucao_dias**: Com base na complexidade definida, estime o esforço de resolução em dias úteis seguindo estas regras: 'Baixa' -> '0-2 dias', 'Média' -> '3-7 dias', 'Alta' -> '8-15 dias', 'Ultra' -> '15-30 dias'.
-            8.  **detalhes_evolutiva**: Se o `tipo_problema` for 'Melhoria' ou 'Evolutivo', preencha os sub-campos de acordo com as seguintes regras:
-                - **estimativa_pontos_funcao**: Calcule os Pontos de Função (PF) com base nas regras do SISP recuperadas abaixo.
-                - **prazo_dias_uteis**: Calcule o prazo em dias úteis usando a tabela de produtividade do SISP recuperada abaixo.
-                
-                **REGRAS E TABELAS DO SISP (Use estas informações para o cálculo):**
-                {dados_metricas}
-
-                - **data_prevista_entrega**: Calcule a data de entrega somando o `prazo_dias_uteis` à **Data Atual ({data_atual})**, considerando apenas dias úteis (segunda a sexta).
-                - Se o tipo de problema não for 'Melhoria' ou 'Evolutivo', retorne `null` para este campo.
-            9.  **nivel_esforco**: Calcule o nível de esforço (Baixo, Médio, Alto) combinando a `complexidade` e a `estimativa_pontos_funcao`."""  # noqa: E501
+            5.  **complexidade**: Classifique como 'Baixa', 'Média', 'Alta' ou 'Ultra'.
+            6.  **solucao_sugerida**: Descreva a solução técnica.
+            7.  **esforco_resolucao_dias**: Estime dias úteis com base na complexidade (Baixa=0-2, Média=3-7, Alta=8-15, Ultra=15-30).
+            8.  **detalhes_evolutiva**: SE E SOMENTE SE for 'Melhoria' ou 'Evolutivo':
+                - **estimativa_pontos_funcao**: Identifique as funções (ALI, AIE, EE, SE, CE) implícitas na solução sugerida. Consulte a **Tabela 1** e **Tabela 2/3** nas <regras_sisp> para somar os PFs.
+                - **prazo_dias_uteis**: Use a **Tabela 4** nas <regras_sisp> com o total de PF calculado.
+                - **data_prevista_entrega**: Data Atual + prazo_dias_uteis (apenas dias úteis).
+            9.  **nivel_esforco**: Combine complexidade e PF para definir (Baixo, Médio, Alto)."""
         )
         chain = prompt | structured_llm
         try:
@@ -356,6 +390,41 @@ class AnalistaWorkflow:
         workflow.add_edge("gerar_relatorio_final", END)
 
         return workflow.compile()
+
+    async def arun(self, solicitacao: str) -> RelatorioAnalise:
+        """Executa o workflow completo de forma assíncrona."""
+        initial_state: WorkflowState = {
+            "solicitacao_original": solicitacao,
+            "classificacao": None,
+            "dados_historico": None,
+            "dados_rcm_especifico": None,
+            "dados_manuais": None,
+            "dados_metricas": None,
+            "diagnostico": None,
+            "relatorio_final": None,
+        }
+        final_state = await self.graph.ainvoke(initial_state)
+        relatorio_final = final_state.get("relatorio_final")
+
+        # Busca o ID da solicitação no grafo para enriquecer o relatório
+        # Nota: _buscar_solicitacao_por_texto é síncrono (Neo4j driver), pode bloquear.
+        # Idealmente, refatorar para async ou rodar em threadpool se for gargalo.
+        # Por enquanto, mantemos simples.
+        solicitacao_id = self._buscar_solicitacao_por_texto(solicitacao)
+
+        if relatorio_final:
+            relatorio_final.solicitacao_id = solicitacao_id
+
+        if (
+            relatorio_final
+            and relatorio_final.detalhes_evolutiva
+            and solicitacao_id != -1
+        ):
+            self._registrar_detalhes_evolutiva(
+                solicitacao_id, relatorio_final.detalhes_evolutiva
+            )
+
+        return relatorio_final
 
     def run(self, solicitacao: str) -> RelatorioAnalise:
         """Executa o workflow completo para uma dada solicitação."""

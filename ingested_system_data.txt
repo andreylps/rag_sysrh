@@ -1,0 +1,5 @@
+✅ Solicitacoes: 1445 (Origem: data/solicitacoes.csv)
+✅ Custos: 4 (Origem: data/faturamento/custos.csv)
+✅ RCMs (Metadados): 1463 (Origem: data/rcms_01.csv)
+✅ Casos de Teste: 13 (Origem: data/casos_de_teste.csv)
+✅ Documentos de RCM (Chunks): 0 (Origem: data/rcms/*.docx)

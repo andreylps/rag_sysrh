@@ -10,11 +10,19 @@ from langchain_community.document_loaders import (  # pyright: ignore[reportMiss
     PyPDFLoader,
     UnstructuredExcelLoader,
 )
-from langchain_community.graphs import (  # type: ignore
-    Neo4jGraph,  # pyright: ignore[reportMissingImports]
-)
+
+# from langchain_community.graphs import (  # type: ignore
+#   Neo4jGraph,  # pyright: ignore[reportMissingImports]
+# )
+from langchain_neo4j import Neo4jGraph
 from langchain_openai import OpenAIEmbeddings  # type: ignore
 from langchain_text_splitters import RecursiveCharacterTextSplitter  # type: ignore
+
+# Define o diretório onde os manuais/documentos são armazenados
+# Certifique-se de que este caminho está correto para a sua estrutura de pastas
+DOCS_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "manuais")
+# Se você preferir um caminho absoluto ou diferente, altere aqui. Exemplo:
+# DOCS_DIR = r"D:\Projeto IA\PROJETOS\RAG_SYSRH\data\manuais"
 
 # Configura o logging
 logging.basicConfig(
