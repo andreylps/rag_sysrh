@@ -1,110 +1,115 @@
-// frontend/src/pages/Chat.jsx
 import React, { useState, useEffect, useRef } from "react";
-import { Send, Bot, User, AlertCircle, Loader2 } from "lucide-react";
+import {
+  Send,
+  Paperclip,
+  Bot,
+  User,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
+  Menu,
+  X,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import ChatSidebar from "../components/ChatSidebar";
 
 const TypingIndicator = () => (
-  <div className="flex gap-1 items-center p-2 h-6">
-    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-    <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+  <div className="flex items-center gap-1 p-4 bg-slate-800 rounded-2xl rounded-tl-sm border border-slate-700 w-fit">
+    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div>
   </div>
 );
 
 const Chat = () => {
-  const [files, setFiles] = useState([]);
-  const fileInputRef = useRef(null);
-
   const [messages, setMessages] = useState([]);
-  const [inputValue, setInputValue] = useState("");
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(true);
   const [connectionError, setConnectionError] = useState(null);
-  const [isTyping, setIsTyping] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("openai");
+  const [attachments, setAttachments] = useState([]);
+
+  // Chat History State
+  const [sessions, setSessions] = useState([]);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   const ws = useRef(null);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // Auto-scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  // --- Chat History Functions ---
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, isTyping]);
-
-  const handleFileSelect = (e) => {
-    if (e.target.files) {
-      setFiles((prev) => [...prev, ...Array.from(e.target.files)]);
+  const fetchSessions = async () => {
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8080/api/v1/chat/sessions"
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setSessions(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch sessions:", error);
     }
   };
 
-  const removeFile = (index) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
+  const fetchSessionMessages = async (sessionId) => {
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8080/api/v1/chat/sessions/${sessionId}/messages`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        // Map DB messages to UI format
+        const uiMessages = data.map((msg) => ({
+          text: msg.content,
+          sender: msg.sender,
+          attachments: msg.attachments || [],
+        }));
+        setMessages(uiMessages);
+      }
+    } catch (error) {
+      console.error("Failed to fetch messages:", error);
+    }
   };
 
-  const convertToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = (error) => reject(error);
-    });
+  const handleNewChat = () => {
+    setMessages([]);
+    setCurrentSessionId(null);
+    setIsSidebarOpen(false);
+    setInput("");
+    setAttachments([]);
   };
+
+  const handleSelectSession = (sessionId) => {
+    setCurrentSessionId(sessionId);
+    fetchSessionMessages(sessionId);
+    setIsSidebarOpen(false);
+  };
+
+  const handleDeleteSession = async (sessionId) => {
+    if (!window.confirm("Tem certeza que deseja excluir esta conversa?"))
+      return;
+    try {
+      await fetch(`http://127.0.0.1:8080/api/v1/chat/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (currentSessionId === sessionId) {
+        handleNewChat();
+      }
+    } catch (error) {
+      console.error("Failed to delete session:", error);
+    }
+  };
+
+  // --- WebSocket & Effects ---
 
   useEffect(() => {
-    // Connect to WebSocket
-    const connectWebSocket = () => {
-      setIsConnecting(true);
-      setConnectionError(null);
-
-      // Use the correct backend URL (adjust port if necessary, usually 8080)
-      const wsUrl = "ws://localhost:8080/api/v1/chat/ws";
-
-      try {
-        ws.current = new WebSocket(wsUrl);
-
-        ws.current.onopen = () => {
-          console.log("WebSocket Connected");
-          setIsConnected(true);
-          setIsConnecting(false);
-          setConnectionError(null);
-        };
-
-        ws.current.onmessage = (event) => {
-          const message = event.data;
-
-          // Ignore system messages (handled by App.jsx for toasts)
-          if (message.startsWith("[SISTEMA]")) {
-            return;
-          }
-
-          setIsTyping(false); // Stop typing when message is received
-          setMessages((prev) => [...prev, { text: message, sender: "bot" }]);
-        };
-
-        ws.current.onclose = () => {
-          console.log("WebSocket Disconnected");
-          setIsConnected(false);
-          setIsConnecting(false);
-          // Optional: Attempt reconnect logic could go here
-        };
-
-        ws.current.onerror = (error) => {
-          console.error("WebSocket Error:", error);
-          setConnectionError("Erro na conexão com o servidor.");
-          setIsConnecting(false);
-          setIsTyping(false);
-        };
-      } catch (err) {
-        setConnectionError("Falha ao iniciar conexão.");
-        setIsConnecting(false);
-        setIsTyping(false);
-      }
-    };
-
+    fetchSessions();
     connectWebSocket();
-
     return () => {
       if (ws.current) {
         ws.current.close();
@@ -112,252 +117,342 @@ const Chat = () => {
     };
   }, []);
 
-  const handleSendMessage = async () => {
-    if ((inputValue.trim() || files.length > 0) && isConnected) {
-      // Prepare attachments
-      const attachments = await Promise.all(
-        files.map(async (file) => ({
-          name: file.name,
-          type: file.type,
-          content: await convertToBase64(file),
-        }))
-      );
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isLoading]);
 
-      // Add user message to UI
-      const userMessage = {
-        text: inputValue,
-        sender: "user",
-        attachments: attachments.map((a) => ({ name: a.name, type: a.type })), // Don't store full base64 in UI state if not needed, or store for preview
+  const connectWebSocket = () => {
+    if (ws.current && ws.current.readyState === WebSocket.OPEN) return;
+
+    setIsConnected(false);
+    setConnectionError(null);
+
+    const wsUrl = "ws://127.0.0.1:8080/api/v1/chat/ws";
+
+    try {
+      console.log("Attempting WebSocket connection to 127.0.0.1...");
+      ws.current = new WebSocket(wsUrl);
+
+      ws.current.onopen = () => {
+        console.log("WebSocket Connected");
+        setIsConnected(true);
+        setConnectionError(null);
       };
-      setMessages((prev) => [...prev, userMessage]);
-      setIsTyping(true);
 
-      // Send to backend as JSON
-      const payload = JSON.stringify({
-        text: inputValue,
-        attachments: attachments,
-      });
-      ws.current.send(payload);
+      ws.current.onmessage = (event) => {
+        const message = event.data;
 
-      // Clear input
-      setInputValue("");
-      setFiles([]);
+        // Ignore system messages
+        if (message.startsWith("[SISTEMA]")) return;
+
+        setMessages((prev) => [...prev, { text: message, sender: "ai" }]);
+        setIsLoading(false);
+        // Refresh sessions list to update timestamps/titles
+        fetchSessions();
+      };
+
+      ws.current.onclose = () => {
+        console.log("WebSocket Disconnected");
+        setIsConnected(false);
+        setConnectionError("Conexão perdida. Tentando reconectar...");
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      ws.current.onerror = (error) => {
+        console.error("WebSocket Error:", error);
+        setConnectionError("Erro na conexão com o servidor.");
+        ws.current.close();
+      };
+    } catch (err) {
+      console.error("Connection setup error:", err);
+      setConnectionError("Falha ao iniciar conexão.");
+    }
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const handleSendMessage = async () => {
+    if ((!input.trim() && attachments.length === 0) || !isConnected) return;
+
+    const userMessage = { text: input, sender: "user", attachments };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput("");
+    setAttachments([]);
+    setIsLoading(true);
+
+    // Prepare payload
+    const payload = {
+      text: userMessage.text,
+      attachments: userMessage.attachments,
+      model: selectedModel,
+      sessionId: currentSessionId, // Send current session ID
+    };
+
+    try {
+      ws.current.send(JSON.stringify(payload));
+    } catch (error) {
+      console.error("Send error:", error);
+      setMessages((prev) => [
+        ...prev,
+        { text: "Erro ao enviar mensagem.", sender: "ai" },
+      ]);
+      setIsLoading(false);
     }
   };
 
   const handleKeyPress = (e) => {
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
       handleSendMessage();
     }
   };
 
+  // --- File Handling ---
+  const handleFileSelect = (e) => {
+    const files = Array.from(e.target.files);
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setAttachments((prev) => [
+          ...prev,
+          {
+            name: file.name,
+            type: file.type,
+            content: e.target.result, // Base64
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = null; // Reset input
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
   return (
-    <div className="page-content flex flex-col h-full bg-slate-900 text-slate-200 p-6">
-      <header className="flex items-center justify-between mb-6 border-b border-slate-700 pb-4">
-        <h1 className="text-2xl font-semibold text-slate-100 flex items-center gap-3">
-          <Bot className="text-cyan-400" size={28} />
-          Assistente Inteligente
-        </h1>
-        <div className="flex items-center gap-2">
-          {isConnecting ? (
-            <span className="flex items-center gap-2 text-yellow-500 text-xs uppercase tracking-wider font-medium">
-              <Loader2 className="animate-spin" size={14} /> Conectando
-            </span>
-          ) : isConnected ? (
-            <span className="flex items-center gap-2 text-emerald-400 text-xs uppercase tracking-wider font-medium">
-              <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></span>{" "}
-              Online
-            </span>
-          ) : (
-            <span className="flex items-center gap-2 text-red-400 text-xs uppercase tracking-wider font-medium">
-              <AlertCircle size={14} /> Offline
-            </span>
-          )}
-        </div>
-      </header>
+    <div className="flex h-[calc(100vh-2rem)] gap-4">
+      {/* Sidebar */}
+      <ChatSidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSelectSession={handleSelectSession}
+        onNewChat={handleNewChat}
+        onDeleteSession={handleDeleteSession}
+      />
 
-      <div className="flex-grow flex flex-col rounded-xl bg-slate-950/50 overflow-hidden shadow-2xl border border-slate-800">
-        {/* Messages Area */}
-        <div className="flex-grow overflow-y-auto p-6 space-y-6 custom-scrollbar">
-          {messages.length === 0 && !connectionError && (
-            <div className="h-full flex flex-col items-center justify-center text-slate-500 opacity-60">
-              <Bot size={64} className="mb-4 text-slate-600" />
-              <p className="text-lg font-light">Como posso ajudar você hoje?</p>
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col h-full relative">
+        {/* Mobile Toggle Button */}
+        <button
+          className="md:hidden absolute top-4 left-4 z-10 p-2 bg-slate-800 rounded-md text-white"
+          onClick={() => setIsSidebarOpen(true)}
+        >
+          <Menu size={24} />
+        </button>
+
+        <header className="flex justify-between items-center mb-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800 backdrop-blur-sm">
+          <div className="flex items-center gap-3 ml-10 md:ml-0">
+            {" "}
+            {/* Added margin for mobile button */}
+            <div className="p-2 bg-indigo-500/20 rounded-lg">
+              <Bot className="text-indigo-400" size={24} />
             </div>
-          )}
-
-          {connectionError && (
-            <div className="p-4 bg-red-900/20 border border-red-900/50 rounded-lg text-red-300 text-center text-sm">
-              {connectionError}
+            <div>
+              <h1 className="text-xl font-bold text-slate-100">
+                Assistente RAG SYS-RH
+              </h1>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    isConnected ? "bg-green-500" : "bg-red-500"
+                  }`}
+                ></span>
+                <span className="text-xs text-slate-400">
+                  {isConnected ? "Online" : "Offline"}
+                </span>
+                {!isConnected && (
+                  <button
+                    onClick={connectWebSocket}
+                    className="ml-2 text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                  >
+                    <RefreshCw size={10} /> Retry
+                  </button>
+                )}
+              </div>
             </div>
-          )}
+          </div>
 
-          {messages.map((msg, index) => (
-            <div
-              key={index}
-              className={`flex ${
-                msg.sender === "user" ? "justify-end" : "justify-start"
-              }`}
+          {/* Model Selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-400 hidden sm:inline">
+              Modelo:
+            </span>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="bg-slate-800 text-slate-200 text-sm rounded-lg border border-slate-700 p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
             >
+              <option value="gemini">Gemini 1.5 Flash</option>
+              <option value="openai">GPT-4 Turbo</option>
+            </select>
+          </div>
+        </header>
+
+        <div className="flex-grow flex flex-col rounded-xl bg-slate-950/50 overflow-hidden shadow-2xl border border-slate-800">
+          {/* Messages Area */}
+          <div className="flex-grow overflow-y-auto p-6 space-y-6 no-scrollbar">
+            {messages.length === 0 && !connectionError && (
+              <div className="h-full flex flex-col items-center justify-center text-slate-500 opacity-60">
+                <Bot size={64} className="mb-4 text-slate-600" />
+                <p className="text-lg font-light">
+                  Como posso ajudar você hoje?
+                </p>
+              </div>
+            )}
+
+            {connectionError && (
+              <div className="p-4 bg-red-900/20 border border-red-900/50 rounded-lg text-red-300 text-center text-sm">
+                {connectionError}
+              </div>
+            )}
+
+            {messages.map((msg, index) => (
               <div
-                className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${
-                  msg.sender === "user"
-                    ? "bg-cyan-600 text-white rounded-tr-sm"
-                    : "bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700"
+                key={index}
+                className={`flex ${
+                  msg.sender === "user" ? "justify-end" : "justify-start"
                 }`}
               >
-                <div className="flex gap-3 w-full">
-                  <div className="flex-shrink-0 mt-1">
+                <div
+                  className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${
+                    msg.sender === "user"
+                      ? "bg-purple-600/10 text-white rounded-tr-sm border border-purple-500/30"
+                      : "bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1 opacity-70">
                     {msg.sender === "user" ? (
-                      <User size={20} className="opacity-80" />
+                      <User size={14} />
                     ) : (
-                      <Bot size={20} className="text-cyan-400" />
+                      <Bot size={14} />
                     )}
+                    <span className="text-xs font-medium uppercase tracking-wider">
+                      {msg.sender === "user" ? "Você" : "Assistente"}
+                    </span>
                   </div>
-                  <div
-                    className={`flex-grow min-w-0 ${
-                      msg.sender === "user" ? "text-right" : "text-left"
-                    }`}
-                  >
-                    {/* Attachments Display */}
-                    {msg.attachments && msg.attachments.length > 0 && (
-                      <div
-                        className={`flex flex-wrap gap-2 mb-2 ${
-                          msg.sender === "user"
-                            ? "justify-end"
-                            : "justify-start"
-                        }`}
-                      >
-                        {msg.attachments.map((att, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-1 bg-black/20 px-2 py-1 rounded text-xs"
-                          >
-                            <span className="truncate max-w-[150px]">
-                              {att.name}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {msg.sender === "user" ? (
-                      <p className="whitespace-pre-wrap m-0 text-left">
-                        {msg.text}
-                      </p>
-                    ) : (
-                      <div
-                        className="prose prose-invert prose-sm max-w-none 
-                        prose-headings:font-semibold prose-headings:text-slate-100 prose-headings:mb-2 prose-headings:mt-4
-                        prose-h1:text-xl prose-h2:text-lg prose-h3:text-base
-                        prose-p:text-slate-300 prose-p:leading-relaxed prose-p:mb-3
-                        prose-strong:text-cyan-400
-                        prose-ul:list-disc prose-ul:pl-4 prose-ul:mb-3
-                        prose-ol:list-decimal prose-ol:pl-4 prose-ol:mb-3
-                        prose-li:text-slate-300 prose-li:mb-1
-                        prose-code:text-cyan-300 prose-code:bg-slate-900/50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
-                        prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-800 prose-pre:rounded-lg
-                        prose-blockquote:border-l-4 prose-blockquote:border-cyan-500 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-slate-400
-                        text-left"
-                      >
-                        <ReactMarkdown>{msg.text}</ReactMarkdown>
-                      </div>
-                    )}
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <ReactMarkdown>{msg.text || ""}</ReactMarkdown>
                   </div>
+                  {/* Attachments Display */}
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div
+                      className={`flex flex-wrap gap-2 mt-2 ${
+                        msg.sender === "user" ? "justify-end" : "justify-start"
+                      }`}
+                    >
+                      {msg.attachments.map((att, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-1 bg-black/20 px-2 py-1 rounded text-xs"
+                        >
+                          <Paperclip size={10} />
+                          <span className="truncate max-w-[150px]">
+                            {att.name || "Anexo"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {isTyping && (
-            <div className="flex justify-start">
-              <div className="bg-slate-800 p-3 rounded-2xl rounded-tl-sm border border-slate-700">
+            {/* Typing Indicator */}
+            {isLoading && (
+              <div className="flex justify-start">
                 <TypingIndicator />
               </div>
-            </div>
-          )}
+            )}
 
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <div className="p-4 bg-slate-900 border-t border-slate-800">
-          {/* File Previews */}
-          {files.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-3">
-              {files.map((file, index) => (
-                <div
-                  key={index}
-                  className="relative group bg-slate-800 border border-slate-700 rounded-lg p-2 flex items-center gap-2"
-                >
-                  <div className="text-xs text-slate-300 truncate max-w-[150px]">
-                    {file.name}
-                  </div>
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="text-slate-500 hover:text-red-400 transition-colors"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex gap-3 max-w-4xl mx-auto">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-4 rounded-xl bg-slate-800 border border-slate-700 text-slate-400 hover:text-cyan-400 hover:border-cyan-500 transition-all"
-              title="Anexar arquivo"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-              </svg>
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileSelect}
-              className="hidden"
-              multiple
-            />
-
-            <input
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              disabled={!isConnected}
-              placeholder={
-                isConnected ? "Digite sua mensagem..." : "Conectando..."
-              }
-              className="flex-grow p-4 rounded-xl bg-slate-800 border border-slate-700 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-inner"
-            />
-            <button
-              onClick={handleSendMessage}
-              disabled={
-                !isConnected || (!inputValue.trim() && files.length === 0)
-              }
-              className="bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-white p-4 rounded-xl transition-all shadow-lg hover:shadow-cyan-900/20 flex items-center justify-center"
-            >
-              <Send size={20} />
-            </button>
+            <div ref={messagesEndRef} />
           </div>
-          <div className="text-center mt-2">
-            <p className="text-[10px] text-slate-600">
-              O assistente pode cometer erros. Verifique informações
-              importantes.
-            </p>
+
+          {/* Input Area */}
+          <div className="p-4 bg-slate-900/80 border-t border-slate-800">
+            {/* Attachments Preview */}
+            {attachments.length > 0 && (
+              <div className="flex gap-2 mb-2 overflow-x-auto pb-2">
+                {attachments.map((att, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-full text-xs text-slate-300 border border-slate-700"
+                  >
+                    <span className="truncate max-w-[100px]">{att.name}</span>
+                    <button
+                      onClick={() => removeAttachment(i)}
+                      className="hover:text-red-400"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+                title="Anexar arquivo"
+              >
+                <Paperclip size={20} />
+              </button>
+              <input
+                type="file"
+                multiple
+                ref={fileInputRef}
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Digite sua mensagem..."
+                className="flex-grow bg-purple-600/5 text-white placeholder-slate-400 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500/50 border border-purple-500/20"
+                disabled={isLoading || !isConnected}
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={
+                  isLoading ||
+                  !isConnected ||
+                  (!input.trim() && attachments.length === 0)
+                }
+                className="p-3 bg-purple-600/20 text-purple-200 rounded-xl hover:bg-purple-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all border border-purple-500/30"
+              >
+                {isLoading ? (
+                  <Loader2 className="animate-spin" size={20} />
+                ) : (
+                  <Send size={20} />
+                )}
+              </button>
+            </div>
+            <div className="text-center mt-2">
+              <p className="text-[10px] text-slate-600">
+                RAG SYS-RH pode cometer erros. Verifique as informações
+                importantes.
+              </p>
+            </div>
           </div>
         </div>
       </div>

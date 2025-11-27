@@ -30,6 +30,7 @@ import {
   Cell,
   Legend,
 } from "recharts";
+import OperationalOverview from "../components/OperationalOverview"; // Importação Segura
 
 // --- Componentes Utilitários (Gauge e MetricCard) ---
 // (Mantidos exatamente iguais. Sem alterações necessárias aqui.)
@@ -817,6 +818,9 @@ const Dashboard = () => {
           </button>
         </div>
       </div>
+
+      {/* --- NOVA SEÇÃO: VISÃO OPERACIONAL (INJEÇÃO SEGURA) --- */}
+      <OperationalOverview />
 
       {/* Menu de Navegação (Abas) */}
       <div className="flex gap-2 mb-6 bg-slate-900 rounded-lg p-2 border border-slate-800 w-fit">

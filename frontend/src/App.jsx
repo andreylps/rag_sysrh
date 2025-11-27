@@ -16,7 +16,11 @@ import TailwindWrapper from "./TailwindWrapper";
 
 // --- IMPORTS PARA VALIDAÇÃO E NOTIFICAÇÕES ---
 import ValidationBacklog from "./pages/ValidationBacklog";
-import ValidationWorkbench from "./pages/ValidationWorkbench"; // <--- NOVO IMPORT
+import ValidationWorkbench from "./pages/ValidationWorkbench";
+import ClientApproval from "./pages/ClientApproval";
+import TechnicalWorkbench from "./pages/TechnicalWorkbench";
+import QualityControlRoom from "./pages/QualityControlRoom"; // <--- NOVO IMPORT (Fase 6.1)
+import DocumentationPage from "./pages/DocumentationPage"; // <--- NOVO IMPORT (Fase 6.8.2)
 import Chat from "./pages/Chat";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css"; // Não se esqueça de importar o CSS!
@@ -39,7 +43,7 @@ function App() {
   // --- GLOBAL WEBSOCKET FOR SYSTEM NOTIFICATIONS ---
   useEffect(() => {
     const connectWebSocket = () => {
-      const wsUrl = "ws://localhost:8080/api/v1/chat/ws";
+      const wsUrl = "ws://127.0.0.1:8080/api/v1/chat/ws";
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -99,21 +103,14 @@ function App() {
 
         <main className="main-content">
           <Routes>
-            <Route path="/" element={<Governance />} />
+            <Route path="/" element={<Welcome />} />
+            <Route path="/governance" element={<Governance />} />
             <Route path="/dashboard" element={<DashboardWrapper />} />
             <Route
               path="/docs"
               element={
                 <TailwindWrapper>
                   <Documentation />
-                </TailwindWrapper>
-              }
-            />
-            <Route
-              path="/knowledge"
-              element={
-                <TailwindWrapper>
-                  <Knowledge />
                 </TailwindWrapper>
               }
             />
@@ -142,6 +139,22 @@ function App() {
                 </TailwindWrapper>
               }
             />
+            <Route
+              path="/cliente/aprovacao/:issue_number" // Rota do Cliente (Pública/Externa)
+              element={
+                <TailwindWrapper>
+                  <ClientApproval />
+                </TailwindWrapper>
+              }
+            />
+            <Route
+              path="/technical-review"
+              element={
+                <TailwindWrapper>
+                  <TechnicalWorkbench />
+                </TailwindWrapper>
+              }
+            />
             {/* --------------------------- */}
 
             {isAdmin && (
@@ -162,9 +175,33 @@ function App() {
                     </TailwindWrapper>
                   }
                 />
+                <Route
+                  path="/qa-room"
+                  element={
+                    <TailwindWrapper>
+                      <QualityControlRoom />
+                    </TailwindWrapper>
+                  }
+                />
+                <Route
+                  path="/knowledge"
+                  element={
+                    <TailwindWrapper>
+                      <Knowledge />
+                    </TailwindWrapper>
+                  }
+                />
               </>
             )}
 
+            <Route
+              path="/documentation"
+              element={
+                <TailwindWrapper>
+                  <DocumentationPage />
+                </TailwindWrapper>
+              }
+            />
             {/* Rota Catch-All para 404 e Transições de Perfil */}
             <Route path="*" element={<Welcome />} />
           </Routes>

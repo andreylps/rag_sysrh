@@ -5,10 +5,11 @@ from typing import Any, Callable, Dict, List, Optional
 from langchain_community.vectorstores import Neo4jVector
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain_openai import OpenAIEmbeddings
 from pydantic import BaseModel, Field
 
-from rag_sysrh.base_agent import BaseAgent
+from src.rag_sysrh.base_agent import BaseAgent
 
 # Configura o logging
 logging.basicConfig(
@@ -35,20 +36,58 @@ class AgenteDocumentacao(BaseAgent):
     """
 
     # Constantes de configuração
-    _NEO4J_VECTOR_INDEX_NAME = "manual-chunks"
-
     def __init__(self) -> None:
         super().__init__()
-        self.embeddings = OpenAIEmbeddings()
-        # Inicializa o retriever para busca vetorial nos manuais
-        self.retriever = Neo4jVector.from_existing_index(
-            embedding=self.embeddings,  # Correção: Usa o modelo de embeddings
-            url=os.getenv("NEO4J_URI"),
-            username=os.getenv("NEO4J_USERNAME"),
-            password=os.getenv("NEO4J_PASSWORD"),
-            index_name=self._NEO4J_VECTOR_INDEX_NAME,
-            text_node_property="texto",
-        ).as_retriever(search_kwargs={"k": 10})
+
+        try:
+            provider = os.getenv("LLM_PROVIDER", "openai").lower()
+            if provider == "gemini":
+                self.embeddings = GoogleGenerativeAIEmbeddings(
+                    model="models/embedding-001"
+                )
+                self._NEO4J_VECTOR_INDEX_NAME = "manual-chunks-gemini"
+                logging.info(
+                    "Using Gemini (Google) Embeddings and Index 'manual-chunks-gemini'."
+                )
+            else:
+                self.embeddings = OpenAIEmbeddings()
+                self._NEO4J_VECTOR_INDEX_NAME = "manual-chunks"
+                logging.info("Using OpenAI Embeddings and Index 'manual-chunks'.")
+
+            # Inicializa o retriever para busca vetorial nos manuais
+            # Inicializa o retriever para busca vetorial nos manuais
+            try:
+                self.vector_store = Neo4jVector.from_existing_index(
+                    embedding=self.embeddings,
+                    url=os.getenv("NEO4J_URI"),
+                    username=os.getenv("NEO4J_USERNAME"),
+                    password=os.getenv("NEO4J_PASSWORD"),
+                    index_name=self._NEO4J_VECTOR_INDEX_NAME,
+                    text_node_property="texto",
+                )
+            except Exception as e:
+                logging.warning(
+                    f"Índice {self._NEO4J_VECTOR_INDEX_NAME} não encontrado. Tentando criar... Erro: {e}"
+                )
+                self.vector_store = Neo4jVector.from_existing_graph(
+                    embedding=self.embeddings,
+                    url=os.getenv("NEO4J_URI"),
+                    username=os.getenv("NEO4J_USERNAME"),
+                    password=os.getenv("NEO4J_PASSWORD"),
+                    index_name=self._NEO4J_VECTOR_INDEX_NAME,
+                    node_label="Chunk",
+                    text_node_properties=["texto"],
+                    embedding_node_property="embedding",
+                )
+
+            self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 10})
+            logging.info("AgenteDocumentacao initialized successfully.")
+
+        except Exception as e:
+            logging.error(
+                f"CRITICAL ERROR initializing AgenteDocumentacao: {e}", exc_info=True
+            )
+            raise
 
     def _buscar_rcms_para_documentar(self, limit: int = 5) -> list[dict]:
         """Busca RCMs concluídos que ainda não foram documentados."""

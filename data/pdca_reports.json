@@ -1,0 +1,44 @@
+[
+  {
+    "id": "57b20f6b-9aa9-45f1-8892-59e604787623",
+    "generation_date": "2025-11-27 11:27:11.432150",
+    "cycle_period": "Sprint Nov/2025",
+    "summary": "Durante o ciclo de 13/11 a 27/11, o time entregou 5 itens. A taxa de qualidade foi de 100.0%. Observou-se uma boa adesão ao processo de RCM, mas recomenda-se atenção à documentação de APIs.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_Report_57b20f6b-9aa9-45f1-8892-59e604787623.pdf",
+    "metrics_snapshot": {
+      "total_entregas": 5,
+      "bugs_encontrados": 0,
+      "taxa_sucesso": "100.0%"
+    },
+    "audit_type": "SPRINT_END",
+    "improvement_suggestion": "Reforçar revisão de documentação de APIs e padronizar terminologia."
+  },
+  {
+    "id": "0362eab4-a117-480e-8527-a0a2eeafc450",
+    "generation_date": "2025-11-27 11:44:11.431953",
+    "cycle_period": "Sprint Nov/2025",
+    "summary": "Durante o ciclo de 13/11 a 27/11, o time entregou 5 itens. A taxa de qualidade foi de 100.0%. Observou-se uma boa adesão ao processo de RCM, mas recomenda-se atenção à documentação de APIs.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_Report_0362eab4-a117-480e-8527-a0a2eeafc450.pdf",
+    "metrics_snapshot": {
+      "total_entregas": 5,
+      "bugs_encontrados": 0,
+      "taxa_sucesso": "100.0%"
+    },
+    "audit_type": "SPRINT_END",
+    "improvement_suggestion": "Reforçar revisão de documentação de APIs e padronizar terminologia."
+  },
+  {
+    "id": "0aa8994d-3f99-49b5-a388-ccabdb05ed7e",
+    "generation_date": "2025-11-27 12:37:41.953551",
+    "cycle_period": "Sprint Nov/2025",
+    "summary": "Durante o ciclo de 13/11 a 27/11, o time entregou 5 itens. A taxa de qualidade foi de 100.0%. Observou-se uma boa adesão ao processo de RCM, mas recomenda-se atenção à documentação de APIs.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_Report_0aa8994d-3f99-49b5-a388-ccabdb05ed7e.pdf",
+    "metrics_snapshot": {
+      "total_entregas": 5,
+      "bugs_encontrados": 0,
+      "taxa_sucesso": "100.0%"
+    },
+    "audit_type": "SPRINT_END",
+    "improvement_suggestion": "Reforçar revisão de documentação de APIs e padronizar terminologia."
+  }
+]

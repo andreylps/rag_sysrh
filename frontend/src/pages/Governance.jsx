@@ -1,5 +1,6 @@
 import { useState } from "react";
 import axios from "axios";
+import { Mail } from "lucide-react"; // Importando ícone
 
 // --- OPÇÕES ATUALIZADAS ---
 // Nova lista de tipos de solicitação conforme solicitado.
@@ -73,7 +74,10 @@ const Governance = () => {
   return (
     <div className="page-content">
       <header className="page-header">
-        <h1>🚀 RAG SYS-RH</h1>
+        <h1 className="font-bold text-4xl flex items-center gap-3">
+          <Mail className="w-10 h-10 logo-icon" />
+          Central de Solicitações
+        </h1>
         <p>noesys.ai - Portal de Governança e Inteligencia Artificial</p>
       </header>
 

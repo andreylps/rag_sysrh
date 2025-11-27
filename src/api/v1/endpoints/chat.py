@@ -1,12 +1,20 @@
+import asyncio
+import base64
+import json
 import logging
 from typing import List
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Body, Depends, WebSocket, WebSocketDisconnect
 from langchain_core.messages import HumanMessage
+from sqlalchemy.orm import Session
+
+# Import Database & Services
+from src.core.database import get_db
 
 # Import Agents
 from src.rag_sysrh.agente_bi import AgenteBI
 from src.rag_sysrh.agente_documentacao import AgenteDocumentacao
+from src.services.chat_service import ChatService
 
 router = APIRouter()
 
@@ -34,55 +42,116 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# Instantiate agents globally (or per connection if needed, but global is better for caching)
-# Note: Agents might need to be initialized inside the loop or lazily if they depend on startup events.
-# For now, we initialize them lazily or check if they are ready.
+# Instantiate agents globally
 agente_bi = None
 agente_docs = None
 
 
 def get_agents():
     global agente_bi, agente_docs
+    print("DEBUG: get_agents called")
     if agente_bi is None:
         try:
+            print("DEBUG: Initializing AgenteBI...")
             agente_bi = AgenteBI()
+            print("DEBUG: AgenteBI initialized.")
         except Exception as e:
-            logger.error(f"Failed to initialize AgenteBI: {e}")
+            print(f"DEBUG: Failed to initialize AgenteBI: {e}")
+            logger.error(f"Failed to initialize AgenteBI: {e}", exc_info=True)
     if agente_docs is None:
         try:
+            print("DEBUG: Initializing AgenteDocumentacao...")
             agente_docs = AgenteDocumentacao()
+            print("DEBUG: AgenteDocumentacao initialized.")
         except Exception as e:
-            logger.error(f"Failed to initialize AgenteDocumentacao: {e}")
+            print(f"DEBUG: Failed to initialize AgenteDocumentacao: {e}")
+            logger.error(f"Failed to initialize AgenteDocumentacao: {e}", exc_info=True)
     return agente_bi, agente_docs
 
 
+# --- HTTP Endpoints for Chat History ---
+
+
+@router.get("/sessions")
+def get_sessions(db: Session = Depends(get_db)):
+    service = ChatService(db)
+    return service.get_sessions()
+
+
+@router.post("/sessions")
+def create_session(
+    title: str = Body(embed=True, default="New Chat"), db: Session = Depends(get_db)
+):
+    service = ChatService(db)
+    return service.create_session(title)
+
+
+@router.delete("/sessions/{session_id}")
+def delete_session(session_id: str, db: Session = Depends(get_db)):
+    service = ChatService(db)
+    service.delete_session(session_id)
+    return {"status": "deleted"}
+
+
+@router.get("/sessions/{session_id}/messages")
+def get_session_messages(session_id: str, db: Session = Depends(get_db)):
+    service = ChatService(db)
+    return service.get_messages(session_id)
+
+
+# --- WebSocket Endpoint ---
+
+
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)):
     await manager.connect(websocket)
 
-    # Ensure agents are initialized
-    bi_agent, docs_agent = get_agents()
+    # Initialize ChatService
+    chat_service = ChatService(db)
+
+    # Ensure agents are initialized in a non-blocking way
+    logger.info("Initializing agents...")
+    try:
+        bi_agent, docs_agent = await asyncio.to_thread(get_agents)
+        logger.info("Agents initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize agents: {e}")
+        await manager.disconnect(websocket)
+        return
 
     try:
         while True:
             raw_data = await websocket.receive_text()
             logger.info("Received message payload")
 
-            # Parse payload (JSON or String)
-            import base64
-            import json
-
             text_input = ""
             attachments = []
+            model_provider = "openai"
+            session_id = None
 
             try:
                 payload = json.loads(raw_data)
                 text_input = payload.get("text", "")
                 attachments = payload.get("attachments", [])
+                model_provider = payload.get("model", "openai")
+                session_id = payload.get("sessionId")  # Get session ID from payload
             except json.JSONDecodeError:
                 text_input = raw_data
+                model_provider = "openai"
 
-            logger.info(f"Text: {text_input}, Attachments: {len(attachments)}")
+            logger.info(
+                f"Text: {text_input}, Attachments: {len(attachments)}, Model: {model_provider}, Session: {session_id}"
+            )
+
+            # Save User Message
+            if session_id:
+                chat_service.save_message(session_id, "user", text_input, attachments)
+
+            # Switch LLM if needed
+            if docs_agent:
+                docs_agent.set_llm(model_provider)
+            if bi_agent:
+                bi_agent.set_llm(model_provider)
 
             # Simple routing logic
             response = ""
@@ -193,7 +262,18 @@ async def websocket_endpoint(websocket: WebSocket):
                         results = vectorstore.similarity_search_with_score(
                             text_input, k=4
                         )
-                        relevant_docs = [doc for doc, score in results if score >= 0.90]
+                        logger.info(f"RAG Retrieval: Found {len(results)} raw results.")
+                        for doc, score in results:
+                            logger.info(
+                                f" - Doc: {doc.metadata.get('source', 'unknown')} | Score: {score}"
+                            )
+
+                        relevant_docs = [
+                            doc for doc, score in results if score >= 0.85
+                        ]  # Lowered threshold slightly for testing
+                        logger.info(
+                            f"RAG Retrieval: {len(relevant_docs)} docs passed threshold (>= 0.85)."
+                        )
 
                     # Heurística para detectar intenção de suporte/correção
                     support_keywords = [
@@ -217,11 +297,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     is_short_message = len(text_input.split()) < 10
 
                     # Decide flow: RAG, Web Search, or Vision/File Analysis
-                    # SÓ vai para Web Search se:
-                    # 1. Não achou docs internos
-                    # 2. Não tem anexos
-                    # 3. NÃO é dúvida de suporte (pois temos instrução específica)
-                    # 4. NÃO é mensagem curta (provavelmente chitchat ou comando)
                     if (
                         not relevant_docs
                         and not attachments
@@ -283,11 +358,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         Você é o Assistente Virtual do sistema RAG SYS-RH.
                         
                         **DIRETRIZES IMPORTANTES:**
-                        1. Se o usuário perguntar sobre **como cadastrar uma solicitação**, **relatar um erro no sistema**, **pedir uma evolução/melhoria** ou **dúvidas sobre o processo de abertura de chamados**:
-                           - Oriente-o explicitamente a acessar a opção **"Governança & IA"** no menu lateral.
+                        1. **PRIORIDADE MÁXIMA:** Se o usuário perguntar **como o sistema funciona**, **como realizar uma tarefa** ou buscar informações técnicas (ex: "Como cadastro um usuário?", "O que é o módulo X?"), **RESPONDA** com base no Contexto abaixo. **NÃO** o mande para a Governança nestes casos.
+                        
+                        2. Apenas se o usuário manifestar **CLARAMENTE** a intenção de **abrir um chamado técnico AGORA**, **relatar um bug** ou **pedir uma nova funcionalidade**:
+                           - Oriente-o a acessar a opção **"Governança & IA"** no menu lateral.
                            - Explique que lá ele encontrará o formulário para cadastrar sua demanda.
-                           - Dê uma breve instrução sobre como preencher os campos (Título, Descrição detalhada, Tipo da solicitação).
-                           - NÃO tente resolver o problema técnico ou criar a solicitação por aqui, apenas oriente o fluxo correto.
 
                         2. Para outras perguntas, use o contexto abaixo recuperado da base de conhecimento (e arquivos anexados, se houver).
                         
@@ -318,6 +393,10 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception as e:
                 logger.error(f"Error processing request: {e}")
                 response = f"Ocorreu um erro ao processar sua solicitação: {str(e)}"
+
+            # Save AI Response
+            if session_id:
+                chat_service.save_message(session_id, "ai", response)
 
             await manager.send_personal_message(response, websocket)
 

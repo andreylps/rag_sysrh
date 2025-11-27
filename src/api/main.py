@@ -17,7 +17,10 @@ load_dotenv()
 import os
 from contextlib import asynccontextmanager
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler  # Adicionado
+
 from src.services.file_watcher import FileWatcherService
+from src.services.quality_service import check_for_stale_issues  # Adicionado
 
 # ... imports ...
 
@@ -34,9 +37,30 @@ async def lifespan(app: FastAPI):
     watcher.start()
     print(f"🚀 File Watcher iniciado em: {data_dir}")
 
+    # Inicializa e inicia o Scheduler de Qualidade
+    scheduler = AsyncIOScheduler()
+    # Roda a cada 1 hora (pode ajustar para minutes=1 para testes rápidos)
+    scheduler.add_job(check_for_stale_issues, "interval", hours=1)
+    scheduler.start()
+    print("🛡️ Quality Monitor Scheduler iniciado.")
+
+    # Inicializa o Scheduler do Auditor Autônomo (Fase 6.9)
+    from src.services.qa_scheduler_service import qa_scheduler
+
+    qa_scheduler.start()
+    print("🤖 Autonomous QA Auditor Scheduler iniciado.")
+
+    # Inicializa o Banco de Dados (SQLite)
+    from src.core.database import Base, engine
+
+    Base.metadata.create_all(bind=engine)
+    print("💾 Database tables created/verified.")
+
     yield
 
-    # Shutdown: Para o File Watcher
+    # Shutdown: Para o File Watcher e Scheduler
+    scheduler.shutdown()
+    print("🛑 Quality Monitor Scheduler parado.")
     watcher.stop()
     print("🛑 File Watcher parado.")
 

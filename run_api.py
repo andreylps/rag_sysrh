@@ -13,4 +13,4 @@ if __name__ == "__main__":
     # We run "src.api.main:app"
     # Since we are in the root, 'src' is accessible.
     # The sys.path modification above ensures 'rag_sysrh' imports inside the modules work.
-    uvicorn.run("src.api.main:app", host="127.0.0.1", port=8080, reload=True)
+    uvicorn.run("src.api.main:app", host="0.0.0.0", port=8080, reload=True)

@@ -2,6 +2,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_neo4j import Neo4jGraph
 from langchain_openai import ChatOpenAI
 
@@ -11,7 +12,15 @@ class BaseAgent:
 
     def __init__(self) -> None:
         load_dotenv()
-        self.llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
+        provider = os.getenv("LLM_PROVIDER", "openai").lower()
+
+        if provider == "gemini":
+            self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+            logging.info("Using Gemini (Google) as LLM provider.")
+        else:
+            self.llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
+            logging.info("Using OpenAI as LLM provider.")
+
         self._connect_to_neo4j()
 
     def _connect_to_neo4j(self) -> None:
@@ -33,3 +42,17 @@ class BaseAgent:
                 f"Failed to connect to Neo4j for {self.__class__.__name__}: {e}"
             )
             raise
+
+    def set_llm(self, provider: str) -> None:
+        """Switches the LLM provider dynamically."""
+        provider = provider.lower()
+        if provider == "gemini":
+            self.llm = ChatGoogleGenerativeAI(
+                model="gemini-1.5-flash-001", temperature=0
+            )
+            logging.info("Switched to Gemini (Google) LLM.")
+        elif provider == "openai":
+            self.llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
+            logging.info("Switched to OpenAI LLM.")
+        else:
+            logging.warning(f"Unknown provider {provider}, keeping current LLM.")

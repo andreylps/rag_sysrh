@@ -4,36 +4,61 @@ from fastapi import APIRouter
 
 # Importa todos os endpoints, INCLUINDO O DASHBOARD
 from src.api.v1.endpoints import (
-    admin,  # <--- Novo endpoint
+    admin,
+    analytics,
+    audit,  # Novo import
+    bi,
     chat,
     dashboard,
+    debug,
+    document_management,
+    documentation,  # Novo import
+    documents,
     knowledge,
+    quality,
+    rcm,
+    review,
     solicitacoes,
     validacao,
+    webhook,
+    workflow,
 )
 
 api_router = APIRouter()
 
-# --- REGISTRO DAS ROTAS ---
-
-# Rota do Dashboard (RECONECTADA)
-api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
-
-# Rota de Solicitações
-api_router.include_router(
-    solicitacoes.router, prefix="/solicitacoes", tags=["solicitações"]
-)
-
-# Rota da Base de Conhecimento
-api_router.include_router(
-    knowledge.router, prefix="/knowledge", tags=["knowledge-base"]
-)
-
-# Rota de Validação (que adicionamos recentemente)
-api_router.include_router(validacao.router, prefix="/validacao", tags=["validação"])
-
-# Rota de Chat
+# Rotas existentes
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
-
-# Rota de Admin (Painel do Maestro)
+api_router.include_router(
+    solicitacoes.router, prefix="/solicitacoes", tags=["solicitacoes"]
+)
+api_router.include_router(webhook.router, prefix="/webhook", tags=["webhook"])
+api_router.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
+api_router.include_router(documents.router, prefix="/documents", tags=["documents"])
+api_router.include_router(bi.router, prefix="/bi", tags=["bi"])
+api_router.include_router(review.router, prefix="/review", tags=["review"])
+api_router.include_router(validacao.router, prefix="/validacao", tags=["validacao"])
+api_router.include_router(rcm.router, prefix="/rcm", tags=["rcm"])
+api_router.include_router(
+    document_management.router, prefix="/doc-mgmt", tags=["document_management"]
+)
+api_router.include_router(knowledge.router, prefix="/knowledge", tags=["knowledge"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
+api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(debug.router, prefix="/debug", tags=["debug"])
+api_router.include_router(quality.router, prefix="/quality", tags=["quality"])
+api_router.include_router(
+    workflow.router, prefix="/workflow", tags=["workflow actions"]
+)
+api_router.include_router(
+    documentation.router, prefix="/documentation", tags=["documentation"]
+)
+api_router.include_router(audit.router, prefix="/audit", tags=["audit"])  # Nova rota
+
+# Rota de RCM (Fluxo Evolutivo)
+api_router.include_router(rcm.router, prefix="/rcm", tags=["rcm (fluxo evolutivo)"])
+
+# Rota de Review Técnico (Fase 4.5)
+api_router.include_router(review.router, prefix="/review", tags=["review técnico"])
+
+# Rota de Qualidade (QCC)
+api_router.include_router(quality.router, prefix="/quality", tags=["quality"])

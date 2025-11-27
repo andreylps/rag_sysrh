@@ -224,3 +224,13 @@ textarea:focus {
   border-color: #38bdf8; /* Cor de destaque (Cyan-400) */
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
 }
+
+/* Utility to hide scrollbar but allow scrolling */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
+}

@@ -12,6 +12,7 @@ from src.services.github_service import (
     get_issue_details,
     list_issues_by_label,
     post_comment,
+    search_closed_issues,  # Adicionado
     update_issue_labels,
 )
 from src.services.neo4j_service import (
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Labels de fluxo de trabalho
 LABEL_AGUARDANDO_VALIDACAO = "status:aguardando-validacao"
-LABEL_VALIDADO = "status:validado"  # Label a ser adicionada após aprovação
+LABEL_VALIDADO = "status:aceite-homologacao"  # Label a ser adicionada após aprovação
 
 
 @router.get("/backlog", response_model=List[dict])
@@ -41,6 +42,53 @@ async def get_validation_backlog():
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"Falha ao se comunicar com o GitHub para buscar o backlog: {str(e)}",
+        )
+
+
+@router.get("/history", response_model=List[dict])
+async def get_validation_history():
+    """
+    Retorna o histórico de issues validadas (fechadas).
+    Busca por issues fechadas que tiveram a label de validação ou liberação rápida.
+    """
+    try:
+        # 1. Issues Fechadas (Recusadas, Finalizadas, etc.)
+        closed_issues = await search_closed_issues(query="is:issue is:closed", limit=50)
+
+        # 2. Issues Abertas mas já validadas (Aguardando Cliente)
+        waiting_client = await search_closed_issues(
+            query="is:issue is:open label:status:aguardando-aprovacao-cliente", limit=50
+        )
+
+        # 3. Issues Abertas mas já validadas (Label genérica)
+        validated = await search_closed_issues(
+            query="is:issue is:open label:status:validado", limit=50
+        )
+
+        # 4. Fast Track (Aguardando Dev - já passou pela validação ou foi direto)
+        fast_track = await search_closed_issues(
+            query="is:issue is:open label:status:aguardando-liberacao-dev", limit=50
+        )
+
+        # Combinar e remover duplicatas
+        all_issues = closed_issues + waiting_client + validated + fast_track
+        # Remover duplicatas por ID
+        unique_issues = {i["number"]: i for i in all_issues}.values()
+
+        # Ordenar por data de fechamento decrescente (ou updated_at se closed_at for null)
+        sorted_issues = sorted(
+            unique_issues,
+            key=lambda x: x["closed_at"] or x.get("updated_at") or "",
+            reverse=True,
+        )
+
+        return list(sorted_issues)
+
+    except Exception as e:
+        logger.error(f"Erro ao buscar histórico de validação: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Falha ao buscar histórico: {str(e)}",
         )
 
 

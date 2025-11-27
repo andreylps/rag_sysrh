@@ -41,10 +41,19 @@ def get_vector_store():
     return vector_store
 
 
+_graph_instance = None
+
+
 def get_graph() -> Neo4jGraph:
     """
     Retorna uma instância configurada do Neo4jGraph para execução de Cypher.
+    Usa Singleton para evitar recarregar o schema a cada chamada.
     """
+    global _graph_instance
+
+    if _graph_instance is not None:
+        return _graph_instance
+
     url = os.getenv("NEO4J_URI")
     username = os.getenv("NEO4J_USERNAME")
     password = os.getenv("NEO4J_PASSWORD")
@@ -52,4 +61,5 @@ def get_graph() -> Neo4jGraph:
     if not all([url, username, password]):
         raise ValueError("Credenciais do Neo4j não encontradas no arquivo .env")
 
-    return Neo4jGraph(url=url, username=username, password=password)
+    _graph_instance = Neo4jGraph(url=url, username=username, password=password)
+    return _graph_instance

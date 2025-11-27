@@ -1,3 +1,4 @@
+/* Sidebar Styles - Reload Trigger */
 .sidebar {
   width: 280px;
   height: 100vh;
@@ -49,6 +50,11 @@
   flex: 1;
   padding: 2rem 1rem;
   overflow-y: auto;
+  scrollbar-width: none; /* Firefox */
+}
+
+.sidebar-nav::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .nav-section {

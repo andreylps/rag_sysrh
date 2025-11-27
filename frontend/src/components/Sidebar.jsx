@@ -12,6 +12,10 @@ import {
   ClipboardCheck,
   MessageSquare,
   Activity,
+  Code,
+  ShieldCheck, // <--- Novo ícone (Fase 6.1)
+  BookOpen, // <--- Novo ícone (Fase 6.8.2)
+  Mail, // <--- Novo ícone para Central de Solicitações
 } from "lucide-react";
 import "./Sidebar.css";
 
@@ -19,11 +23,16 @@ const Sidebar = ({ isAdmin, toggleAdmin }) => {
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <Bot className="logo-icon" size={32} />
-        <div className="logo-text">
-          <span className="logo-title">NOESYS.AI</span>
-          <span className="logo-subtitle">Agent Container</span>
-        </div>
+        <NavLink
+          to="/"
+          className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+        >
+          <Bot className="logo-icon" size={32} />
+          <div className="logo-text">
+            <span className="logo-title">NOESYS.AI</span>
+            <span className="logo-subtitle">Agent Container</span>
+          </div>
+        </NavLink>
       </div>
 
       <nav className="sidebar-nav">
@@ -31,11 +40,15 @@ const Sidebar = ({ isAdmin, toggleAdmin }) => {
           <span className="nav-label">Módulos Ativos</span>
 
           <NavLink
-            to="/"
+            to="/governance"
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
           >
-            <LayoutDashboard size={20} />
-            <span>Governança & IA</span>
+            <Mail
+              size={20}
+              className="logo-icon"
+              style={{ width: "20px", height: "20px" }}
+            />
+            <span>Central de Solicitações</span>
           </NavLink>
 
           <NavLink
@@ -51,7 +64,15 @@ const Sidebar = ({ isAdmin, toggleAdmin }) => {
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
           >
             <FileText size={20} />
-            <span>Documentação</span>
+            <span>Documentação (Legado)</span>
+          </NavLink>
+
+          <NavLink
+            to="/documentation"
+            className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
+          >
+            <BookOpen size={20} />
+            <span>Biblioteca</span>
           </NavLink>
 
           {/* 2. Novo Link para o Backlog de Validação */}
@@ -62,15 +83,15 @@ const Sidebar = ({ isAdmin, toggleAdmin }) => {
             <ClipboardCheck size={20} />
             <span>Validação (Analista)</span>
           </NavLink>
-          {/* -------------------------------------- */}
 
           <NavLink
-            to="/knowledge"
+            to="/technical-review"
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
           >
-            <BrainCircuit size={20} />
-            <span>Base de Conhecimento</span>
+            <Code size={20} />
+            <span>Revisão Técnica</span>
           </NavLink>
+          {/* -------------------------------------- */}
 
           <NavLink
             to="/chat"
@@ -101,6 +122,24 @@ const Sidebar = ({ isAdmin, toggleAdmin }) => {
             >
               <ShieldAlert size={20} />
               <span>Observabilidade</span>
+            </NavLink>
+            <NavLink
+              to="/qa-room"
+              className={({ isActive }) =>
+                `nav-item admin-item ${isActive ? "active" : ""}`
+              }
+            >
+              <ShieldCheck size={20} />
+              <span>Sala de Qualidade</span>
+            </NavLink>
+            <NavLink
+              to="/knowledge"
+              className={({ isActive }) =>
+                `nav-item admin-item ${isActive ? "active" : ""}`
+              }
+            >
+              <BrainCircuit size={20} />
+              <span>Base de Conhecimento</span>
             </NavLink>
           </div>
         )}

@@ -9,31 +9,27 @@ dependencies = [
     # Core application framework
     "streamlit",
     "protobuf<5", # Fixado para compatibilidade com streamlit
-
     # LangChain Stack (Moderna)
-    "langchain",                # Pacote principal (inclui Memory, Chains)
-    "langchain-core",           # Abstrações base
-    "langchain-community",      # Integrações de terceiros
-    "langchain-openai",         # Integração OpenAI
-    "langchain-neo4j",          # Integração Neo4j
+    "langchain", # Pacote principal (inclui Memory, Chains)
+    "langchain-core", # Abstrações base
+    "langchain-community", # Integrações de terceiros
+    "langchain-openai", # Integração OpenAI
+    "langchain-neo4j", # Integração Neo4j
     "langchain-text-splitters", # Para RecursiveCharacterTextSplitter
-    "langsmith",                # Observabilidade e Avaliação
-    "langgraph",                # Orquestração de Agentes
-
+    "langsmith", # Observabilidade e Avaliação
+    "langgraph", # Orquestração de Agentes
     # Data handling and analysis
     "pandas",
     "altair",
     "ftfy",
     "python-dateutil",
-    "openpyxl",                 # Necessário para pandas ler Excel (.xlsx)
-
+    "openpyxl", # Necessário para pandas ler Excel (.xlsx)
     # Document loaders & Environment
     "pypdf",
     "docx2txt",
     "python-docx",
     "unstructured[xlsx]",
     "python-dotenv",
-
     # Core agent dependencies
     "neo4j",
     "openai",
@@ -45,6 +41,9 @@ dependencies = [
     "PyGithub",
     "watchdog",
     "duckduckgo-search",
+    "langchain-google-genai>=3.2.0",
+    "apscheduler>=3.11.1",
+    "reportlab>=4.4.5",
 ]
 
 [tool.setuptools]

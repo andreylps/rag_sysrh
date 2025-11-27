@@ -183,10 +183,10 @@ class AnalistaWorkflow:
         resultado_manuais = semantic_tool.invoke({"input": query})
         return {"dados_manuais": resultado_manuais}
 
-    def consultar_metricas(self, state: WorkflowState):  # noqa: ANN201
-        logging.info("Passo 3.5: Consultando guia de métricas SISP...")
-        # Retornamos as regras completas do SISP 2.3 para contagem de Pontos de Função
-        regras_sisp = """
+    @staticmethod
+    def _get_regras_sisp() -> str:
+        """Retorna as regras de contagem SISP 2.3."""
+        return """
         REGRAS DE CONTAGEM SISP 2.3 (Roteiro de Métricas):
 
         1. TABELA DE VALORES DE PONTOS DE FUNÇÃO (PF):
@@ -221,7 +221,71 @@ class AnalistaWorkflow:
         | 31-40 PF | 36 | 60 |
         | 41-50 PF | 45 | 75 |
         """
-        return {"dados_metricas": regras_sisp}
+
+    def consultar_metricas(self, state: WorkflowState):  # noqa: ANN201
+        logging.info("Passo 3.5: Consultando guia de métricas SISP...")
+        return {"dados_metricas": self._get_regras_sisp()}
+
+    # ... (outros métodos mantidos) ...
+
+    async def processar_rejeicao(self, rcm_text: str, client_feedback: str) -> str:
+        """
+        Processa a rejeição do cliente, revisando o RCM com base no feedback.
+        """
+        logging.info("Iniciando revisão automática de RCM baseada em feedback...")
+
+        regras_sisp = self._get_regras_sisp()
+
+        prompt = ChatPromptTemplate.from_template(
+            """Você é um Analista de Sistemas Sênior responsável por ajustar uma Proposta Técnica (RCM).
+            
+            O cliente REJEITOU a proposta atual com o seguinte feedback:
+            "{feedback}"
+
+            <rcm_atual>
+            {rcm_text}
+            </rcm_atual>
+            
+            <regras_sisp>
+            {regras_sisp}
+            </regras_sisp>
+
+            <instrucoes>
+            1. Analise o feedback do cliente e identifique o que precisa ser alterado no RCM.
+            2. Reescreva o RCM mantendo a estrutura original, mas aplicando as correções solicitadas.
+            3. Adicione uma seção no início do documento chamada "## 📝 Notas de Revisão (IA)" explicando brevemente o que foi alterado para atender ao cliente.
+            4. Se o feedback for vago, faça o melhor esforço para interpretar ou adicione notas perguntando ao analista humano.
+            5. Mantenha o tom profissional e técnico.
+            6. CRÍTICO: Você DEVE manter as seções de métricas originais no final ou no corpo do texto.
+               - Se elas existirem no texto original, MANTENHA-AS EXATAMENTE COMO ESTÃO.
+               - Se elas ESTIVEREM FALTANDO (ex: Prazo Estimado sumiu), você DEVE RECALCULAR e adicionar com base nas <regras_sisp> e na estimativa de PFs.
+               
+               Formato Obrigatório das Métricas:
+               "**Estimativa de Pontos de Função (PF):** X PF"
+               "**Prazo Estimado:** Y dias"
+               
+               Não remova essas informações, pois elas alimentam o dashboard do cliente.
+            </instrucoes>
+
+            RCM Revisado:"""
+        )
+
+        chain = prompt | self.llm | StrOutputParser()
+
+        try:
+            novo_rcm = await chain.ainvoke(
+                {
+                    "feedback": client_feedback,
+                    "rcm_text": rcm_text,
+                    "regras_sisp": regras_sisp,
+                }
+            )
+            logging.info("RCM revisado com sucesso pela IA.")
+            return novo_rcm
+        except Exception as e:
+            logging.error(f"Erro ao revisar RCM: {e}")
+            # Em caso de erro, retorna o original com uma nota
+            return f"## ⚠️ Erro na Revisão Automática\n\nNão foi possível processar o feedback automaticamente. Erro: {e}\n\n---\n\n{rcm_text}"
 
     def gerar_diagnostico(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 4: Gerando diagnóstico...")  # noqa: LOG015
@@ -366,6 +430,61 @@ class AnalistaWorkflow:
             },
         )
 
+    async def finalizar_analise(self, state: WorkflowState):  # noqa: ANN201
+        """
+        Passo 6: Finaliza a análise, gera RCM se necessário e atualiza labels no GitHub.
+        """
+        logging.info("Passo 6: Finalizando análise e gerando artefatos...")
+        relatorio = state.get("relatorio_final")
+
+        if not relatorio or not relatorio.solicitacao_id:
+            logging.warning(
+                "Relatório incompleto ou sem ID de solicitação. Pulando geração de RCM."
+            )
+            return {"relatorio_final": relatorio}
+
+        issue_number = relatorio.solicitacao_id
+
+        # Verifica se é Evolutiva/Melhoria para gerar RCM
+        # Normaliza para lowercase para comparação
+        tipo_solicitacao = relatorio.tipo_solicitacao.lower()
+        if "evoluti" in tipo_solicitacao or "melhoria" in tipo_solicitacao:
+            logging.info(f"Solicitação {issue_number} é Evolutiva. Gerando RCM...")
+
+            # Prepara dados para o RCM
+            analysis_data = relatorio.model_dump()
+
+            try:
+                # Gera e anexa o RCM
+                # Importação local para evitar ciclo se houver, mas idealmente no topo
+                from src.services.github_service import update_issue_labels
+                from src.services.rcm_generation_service import (
+                    generate_and_attach_rcm_document,
+                )
+
+                template_path = "data/templates/SysRH - RCM - Relatório de Controle de Mudança - MOD - 9999-9999.docx"
+
+                await generate_and_attach_rcm_document(
+                    issue_number=issue_number,
+                    analysis_data=analysis_data,
+                    file_template_path=template_path,
+                )
+
+                # Atualiza labels
+                await update_issue_labels(
+                    issue_number=issue_number,
+                    add_labels=["status:aguardando-validacao-rcm"],
+                    remove_labels=["status:analise-em-andamento", "status:nova"],
+                )
+                logging.info(
+                    f"RCM gerado e labels atualizadas para issue #{issue_number}."
+                )
+
+            except Exception as e:
+                logging.error(f"Erro ao gerar RCM ou atualizar GitHub: {e}")
+
+        return {"relatorio_final": relatorio}
+
     def _build_graph(self) -> StateGraph:
         """Constrói e compila o workflow do LangGraph."""
         workflow = StateGraph(WorkflowState)
@@ -378,6 +497,7 @@ class AnalistaWorkflow:
         workflow.add_node("consultar_metricas", self.consultar_metricas)
         workflow.add_node("gerar_diagnostico", self.gerar_diagnostico)
         workflow.add_node("gerar_relatorio_final", self.gerar_relatorio_final)
+        workflow.add_node("finalizar_analise", self.finalizar_analise)
 
         # Define as arestas (fluxo) do workflow
         workflow.set_entry_point("classificar_solicitacao")
@@ -387,7 +507,8 @@ class AnalistaWorkflow:
         workflow.add_edge("consultar_manuais", "consultar_metricas")
         workflow.add_edge("consultar_metricas", "gerar_diagnostico")
         workflow.add_edge("gerar_diagnostico", "gerar_relatorio_final")
-        workflow.add_edge("gerar_relatorio_final", END)
+        workflow.add_edge("gerar_relatorio_final", "finalizar_analise")
+        workflow.add_edge("finalizar_analise", END)
 
         return workflow.compile()
 
@@ -426,6 +547,50 @@ class AnalistaWorkflow:
 
         return relatorio_final
 
+    async def processar_rejeicao(self, rcm_text: str, client_feedback: str) -> str:
+        """
+        Processa a rejeição do cliente, revisando o RCM com base no feedback.
+        """
+        logging.info("Iniciando revisão automática de RCM baseada em feedback...")
+
+        prompt = ChatPromptTemplate.from_template(
+            """Você é um Analista de Sistemas Sênior responsável por ajustar uma Proposta Técnica (RCM).
+            
+            O cliente REJEITOU a proposta atual com o seguinte feedback:
+            "{feedback}"
+
+            <rcm_atual>
+            {rcm_text}
+            </rcm_atual>
+
+            <instrucoes>
+            1. Analise o feedback do cliente e identifique o que precisa ser alterado no RCM.
+            2. Reescreva o RCM mantendo a estrutura original, mas aplicando as correções solicitadas.
+            3. Adicione uma seção no início do documento chamada "## 📝 Notas de Revisão (IA)" explicando brevemente o que foi alterado para atender ao cliente.
+            4. Se o feedback for vago, faça o melhor esforço para interpretar ou adicione notas perguntando ao analista humano.
+            5. Mantenha o tom profissional e técnico.
+            6. CRÍTICO: Você DEVE manter as seções de métricas originais no final ou no corpo do texto, especificamente:
+               - "**Estimativa de Pontos de Função (PF):** X PF"
+               - "**Prazo Estimado:** Y dias"
+               Não remova essas informações, pois elas alimentam o dashboard do cliente.
+            </instrucoes>
+
+            RCM Revisado:"""
+        )
+
+        chain = prompt | self.llm | StrOutputParser()
+
+        try:
+            novo_rcm = await chain.ainvoke(
+                {"feedback": client_feedback, "rcm_text": rcm_text}
+            )
+            logging.info("RCM revisado com sucesso pela IA.")
+            return novo_rcm
+        except Exception as e:
+            logging.error(f"Erro ao revisar RCM: {e}")
+            # Em caso de erro, retorna o original com uma nota
+            return f"## ⚠️ Erro na Revisão Automática\n\nNão foi possível processar o feedback automaticamente. Erro: {e}\n\n---\n\n{rcm_text}"
+
     def run(self, solicitacao: str) -> RelatorioAnalise:
         """Executa o workflow completo para uma dada solicitação."""
         # Inicializa o estado com todas as chaves para satisfazer o type checker.
@@ -439,43 +604,43 @@ class AnalistaWorkflow:
             "diagnostico": None,
             "relatorio_final": None,
         }
-        final_state = self.graph.invoke(initial_state)
-        relatorio_final = final_state.get("relatorio_final")
+        # invoke pode falhar se tiver nós async. O ideal é usar arun.
+        # Mas para manter compatibilidade, tentamos invoke.
+        # Se finalizar_analise for async, invoke deve lidar se o runtime permitir,
+        # mas geralmente requer ainvoke.
+        # Vamos assumir que quem chama run() sabe o que faz ou que o LangGraph lida com isso.
+        # Caso contrário, teríamos que rodar o loop aqui.
+        import asyncio
 
-        # Busca o ID da solicitação no grafo para enriquecer o relatório
-        solicitacao_id = self._buscar_solicitacao_por_texto(solicitacao)
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
 
-        if relatorio_final:
-            # Adiciona o ID encontrado ao objeto de relatório
-            relatorio_final.solicitacao_id = solicitacao_id
-
-        # Se a análise gerou detalhes de uma demanda evolutiva, salva no grafo.
-        if (
-            relatorio_final
-            and relatorio_final.detalhes_evolutiva
-            and solicitacao_id != -1
-        ):
-            self._registrar_detalhes_evolutiva(
-                solicitacao_id, relatorio_final.detalhes_evolutiva
-            )
-
-        return relatorio_final
+        return loop.run_until_complete(self.arun(solicitacao))
 
 
 if __name__ == "__main__":
     # Exemplo de uso alinhado à Fase 2
+    import asyncio
+
     from rag_sysrh.main import get_tools
 
     analista_agent = AnalistaWorkflow(tools=get_tools())
 
     texto_solicitacao = "Estou tentando registrar uma proposta de consignação para o cliente UDESC, mas o sistema apresenta o erro 'RN005 - Limite excedido'. O que devo fazer?"  # noqa: E501
 
-    relatorio = analista_agent.run(texto_solicitacao)
+    # Usando arun para suportar async
+    relatorio = asyncio.run(analista_agent.arun(texto_solicitacao))
 
     print("\n--- Relatório de Análise da Solicitação ---")
-    # Corrigido para usar os nomes de atributo corretos do modelo RelatorioAnalise
-    print(f"Classificação: {relatorio.tipo_problema}")
-    print(f"Resumo: {relatorio.resumo_problema}")
-    print(f"Diagnóstico: {relatorio.diagnostico}")
-    print(f"Solução Sugerida: {relatorio.solucao_sugerida}")
-    print(f"Nível de Esforço: {relatorio.nivel_esforco}")
+    if relatorio:
+        # Corrigido para usar os nomes de atributo corretos do modelo RelatorioAnalise
+        print(f"Classificação: {relatorio.tipo_problema}")
+        print(f"Resumo: {relatorio.resumo_problema}")
+        print(f"Diagnóstico: {relatorio.diagnostico}")
+        print(f"Solução Sugerida: {relatorio.solucao_sugerida}")
+        print(f"Nível de Esforço: {relatorio.nivel_esforco}")
+    else:
+        print("Relatório não gerado.")

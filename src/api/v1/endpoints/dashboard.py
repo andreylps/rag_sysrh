@@ -1,5 +1,6 @@
 # src/api/v1/endpoints/dashboard.py
 
+import asyncio
 import random
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
@@ -139,7 +140,10 @@ async def get_production_data(
     # --- 2. EXECUÇÃO NO NEO4J ---
     if db_client:
         try:
-            result_list: List[Dict] = db_client.query(cypher_kpis)
+            # result_list: List[Dict] = db_client.query(cypher_kpis)
+            result_list: List[Dict] = await asyncio.to_thread(
+                db_client.query, cypher_kpis
+            )
 
             if result_list and len(result_list) > 0:
                 record = result_list[0]
@@ -172,7 +176,8 @@ async def get_production_data(
                 ORDER BY value DESC
                 LIMIT 5
             """
-            ranking_list = db_client.query(cypher_ranking)
+            # ranking_list = db_client.query(cypher_ranking)
+            ranking_list = await asyncio.to_thread(db_client.query, cypher_ranking)
             ranking_data = []
             max_val = 1
             if ranking_list:
@@ -287,7 +292,8 @@ async def get_billing_data(
                 RETURN sum(valor_solicitacao) as receita_total
             """
 
-            result = db_client.query(cypher_billing)
+            # result = db_client.query(cypher_billing)
+            result = await asyncio.to_thread(db_client.query, cypher_billing)
             if result:
                 receita_total_val = result[0].get("receita_total") or 0.0
                 # Simulando margem de lucro de 20% e custos de 80%
@@ -315,7 +321,10 @@ async def get_billing_data(
                 ORDER BY total_valor DESC
                 LIMIT 5
             """
-            clients_result = db_client.query(cypher_top_clients)
+            # clients_result = db_client.query(cypher_top_clients)
+            clients_result = await asyncio.to_thread(
+                db_client.query, cypher_top_clients
+            )
             if clients_result:
                 for r in clients_result:
                     val = r["total_valor"]

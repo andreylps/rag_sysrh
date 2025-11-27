@@ -1,0 +1,12 @@
+[
+  {
+    "content": "Diretriz de Teste 1: Sempre verificar logs.",
+    "created_at": "2025-11-27T11:47:26.724885",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz de Teste 2: Validar inputs.",
+    "created_at": "2025-11-27T11:47:26.724912",
+    "source": "PDCA_FEEDBACK"
+  }
+]

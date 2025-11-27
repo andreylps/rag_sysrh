@@ -4,7 +4,7 @@ from typing import Any, Dict
 from langchain_core.prompts import PromptTemplate
 from langchain_neo4j import GraphCypherQAChain
 
-from rag_sysrh.base_agent import BaseAgent
+from src.rag_sysrh.base_agent import BaseAgent
 
 # Configura o logging
 logging.basicConfig(
@@ -20,7 +20,11 @@ class AgenteBI(BaseAgent):
 
     def __init__(self) -> None:
         super().__init__()
-        self.chain = self._build_chain()
+        try:
+            self.chain = self._build_chain()
+        except Exception as e:
+            logging.error(f"Falha ao construir chain do AgenteBI: {e}")
+            self.chain = None
 
     def _build_chain(self) -> GraphCypherQAChain:
         """
