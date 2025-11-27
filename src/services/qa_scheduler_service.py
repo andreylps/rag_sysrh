@@ -38,7 +38,17 @@ class QASchedulerService:
 
     def _save_schedule(self, schedule: AuditSchedule):
         schedules = self._load_schedules()
-        schedules.append(schedule)
+
+        # Check if exists and update, otherwise append
+        existing_index = next(
+            (i for i, s in enumerate(schedules) if s.id == schedule.id), -1
+        )
+
+        if existing_index >= 0:
+            schedules[existing_index] = schedule
+        else:
+            schedules.append(schedule)
+
         with open(SCHEDULE_FILE, "w") as f:
             json.dump([s.dict() for s in schedules], f, default=str)
 
@@ -48,16 +58,49 @@ class QASchedulerService:
             self.scheduler_started = True
             logger.info("QA Scheduler iniciado.")
 
-            # Reagendar tarefas persistidas (simplificado: apenas logs por enquanto)
-            # Em um cenário real, recriaríamos os jobs no APScheduler
+            # Reagendar tarefas persistidas
+            schedules = self._load_schedules()
+            pending_count = 0
+            recovered_count = 0
 
-            # Agendar a verificação autônoma diária
-            # self.schedule_autonomous_audits() # Método removido em favor do planejamento trimestral
+            for schedule in schedules:
+                # Recuperar jobs que estavam rodando quando o servidor parou (Crash Recovery)
+                if schedule.status == "RUNNING":
+                    logger.warning(
+                        f"Recuperando job interrompido: {schedule.id} ({schedule.audit_type})"
+                    )
+                    schedule.status = "PENDING"
+                    self._save_schedule(schedule)
+                    recovered_count += 1
 
-            # Se não houver nada agendado, planejar o trimestre automaticamente
-            if not self._load_schedules():
+                if schedule.status == "PENDING":
+                    # Se a data já passou, o APScheduler vai executar imediatamente (se grace time permitir)
+                    # ou podemos forçar. Vamos deixar o APScheduler lidar com isso.
+                    self.scheduler.add_job(
+                        self._execute_audit_job,
+                        trigger=DateTrigger(run_date=schedule.scheduled_date),
+                        args=[schedule.id],
+                        id=schedule.id,
+                        replace_existing=True,
+                        misfire_grace_time=None,  # Executa mesmo se atrasado
+                    )
+                    pending_count += 1
+
+            logger.info(
+                f"Reagendados {pending_count} jobs pendentes (Recuperados de crash: {recovered_count})."
+            )
+
+            # Se não houver nada agendado (nem pendente nem concluído/falho que indicaria histórico),
+            # ou se quisermos forçar planejamento se não houver FUTUROS?
+            # A lógica original era "se lista vazia". Vamos manter.
+            # Verificar se existem agendamentos futuros
+            future_schedules = [
+                s for s in schedules if s.scheduled_date > datetime.now()
+            ]
+
+            if not future_schedules:
                 logger.info(
-                    "Nenhum agendamento encontrado. Iniciando planejamento trimestral automático."
+                    "Nenhum agendamento futuro encontrado. Iniciando planejamento trimestral automático."
                 )
                 self.plan_quarterly_schedule()
 
@@ -74,7 +117,18 @@ class QASchedulerService:
         self._clear_future_schedules(start_date)
 
         end_date = start_date + timedelta(days=90)
-        current_date = start_date
+
+        # Definir horário padrão para 08:00 AM
+        current_date = start_date.replace(hour=8, minute=0, second=0, microsecond=0)
+
+        # Se start_date for hoje e já passou das 8h, agendar para agora + 5 min ou próximo dia?
+        # Se for passado, o _schedule_audit vai ignorar se for > 1h atrás.
+        # Vamos garantir que se for hoje e já passou das 8h, agendamos para "agora" ou ignoramos o dia?
+        # Melhor: Se current_date < now, ajusta para now + 1 min (apenas para o dia inicial)
+        if current_date < datetime.now():
+            # Se for o dia de hoje, ajusta para agora. Se for dia passado, o loop vai tratar.
+            if current_date.date() == datetime.now().date():
+                current_date = datetime.now() + timedelta(minutes=1)
 
         # Contadores para frequências relativas (apenas dias úteis)
         business_day_counter = 0
@@ -126,6 +180,10 @@ class QASchedulerService:
                 )
 
             current_date += timedelta(days=1)
+            # Garantir que os próximos dias sejam às 08:00 AM
+            current_date = current_date.replace(
+                hour=8, minute=0, second=0, microsecond=0
+            )
             business_day_counter += 1
 
         # 6. Auditoria Trimestral (No final - garantir que caia em dia útil?)
@@ -161,6 +219,23 @@ class QASchedulerService:
     def _schedule_audit(self, audit_date: datetime, audit_type: str, details: dict):
         # Evitar agendar no passado se start_date for hoje
         if audit_date < datetime.now() - timedelta(hours=1):
+            return
+
+        # Verificar se já existe agendamento do mesmo tipo para o mesmo dia (evitar duplicatas)
+        schedules = self._load_schedules()
+        existing = next(
+            (
+                s
+                for s in schedules
+                if s.audit_type == audit_type
+                and s.scheduled_date.date() == audit_date.date()
+                and s.status in ["PENDING", "COMPLETED", "RUNNING"]
+            ),
+            None,
+        )
+
+        if existing:
+            # logger.info(f"Pulo: Já existe {audit_type} para {audit_date.date()}")
             return
 
         schedule_id = str(uuid.uuid4())
@@ -257,6 +332,11 @@ class QASchedulerService:
             [s for s in schedules if s.status in ["PENDING", "RUNNING"]],
             key=lambda x: x.scheduled_date,
         )
+
+    def get_all_schedules(self):
+        """Retorna todos os agendamentos (passados e futuros)."""
+        schedules = self._load_schedules()
+        return sorted(schedules, key=lambda x: x.scheduled_date)
 
     def get_schedule_stats(self):
         """Retorna estatísticas dos agendamentos."""

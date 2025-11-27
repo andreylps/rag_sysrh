@@ -1,44 +1,184 @@
 [
   {
-    "id": "57b20f6b-9aa9-45f1-8892-59e604787623",
-    "generation_date": "2025-11-27 11:27:11.432150",
-    "cycle_period": "Sprint Nov/2025",
-    "summary": "Durante o ciclo de 13/11 a 27/11, o time entregou 5 itens. A taxa de qualidade foi de 100.0%. Observou-se uma boa adesão ao processo de RCM, mas recomenda-se atenção à documentação de APIs.",
-    "pdf_file_path": "data/reports/pdca\\PDCA_Report_57b20f6b-9aa9-45f1-8892-59e604787623.pdf",
+    "id": "0807c0ab-5e82-4696-9255-f01608634a44",
+    "generation_date": "2025-11-27 17:44:19.289912",
+    "cycle_period": "DOC_AUDIT - Nov/2025",
+    "summary": "Auditoria de Documentação focada em ISO 9001. A maioria dos manuais está atualizada.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DOC_AUDIT_0807c0ab-5e82-4696-9255-f01608634a44.pdf",
     "metrics_snapshot": {
-      "total_entregas": 5,
-      "bugs_encontrados": 0,
-      "taxa_sucesso": "100.0%"
+      "itens_verificados": 50,
+      "conformidade": "98%"
     },
-    "audit_type": "SPRINT_END",
-    "improvement_suggestion": "Reforçar revisão de documentação de APIs e padronizar terminologia."
+    "audit_type": "DOC_AUDIT",
+    "improvement_suggestion": "Revisar manual do usuário final para clareza."
   },
   {
-    "id": "0362eab4-a117-480e-8527-a0a2eeafc450",
-    "generation_date": "2025-11-27 11:44:11.431953",
-    "cycle_period": "Sprint Nov/2025",
-    "summary": "Durante o ciclo de 13/11 a 27/11, o time entregou 5 itens. A taxa de qualidade foi de 100.0%. Observou-se uma boa adesão ao processo de RCM, mas recomenda-se atenção à documentação de APIs.",
-    "pdf_file_path": "data/reports/pdca\\PDCA_Report_0362eab4-a117-480e-8527-a0a2eeafc450.pdf",
+    "id": "f185ccdb-64f1-46b1-b81a-1ffc25666281",
+    "generation_date": "2025-11-27 17:55:32.950352",
+    "cycle_period": "DOC_AUDIT - Nov/2025",
+    "summary": "Auditoria de Documentação focada em ISO 9001. A maioria dos manuais está atualizada.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DOC_AUDIT_f185ccdb-64f1-46b1-b81a-1ffc25666281.pdf",
     "metrics_snapshot": {
-      "total_entregas": 5,
-      "bugs_encontrados": 0,
-      "taxa_sucesso": "100.0%"
+      "itens_verificados": 50,
+      "conformidade": "98%"
     },
-    "audit_type": "SPRINT_END",
-    "improvement_suggestion": "Reforçar revisão de documentação de APIs e padronizar terminologia."
+    "audit_type": "DOC_AUDIT",
+    "improvement_suggestion": "Revisar manual do usuário final para clareza."
   },
   {
-    "id": "0aa8994d-3f99-49b5-a388-ccabdb05ed7e",
-    "generation_date": "2025-11-27 12:37:41.953551",
-    "cycle_period": "Sprint Nov/2025",
-    "summary": "Durante o ciclo de 13/11 a 27/11, o time entregou 5 itens. A taxa de qualidade foi de 100.0%. Observou-se uma boa adesão ao processo de RCM, mas recomenda-se atenção à documentação de APIs.",
-    "pdf_file_path": "data/reports/pdca\\PDCA_Report_0aa8994d-3f99-49b5-a388-ccabdb05ed7e.pdf",
+    "id": "e84d2d7b-8221-4aa9-b606-4f8bc69d0b9e",
+    "generation_date": "2025-11-27 17:55:33.031897",
+    "cycle_period": "DOC_AUDIT - Nov/2025",
+    "summary": "Auditoria de Documentação focada em ISO 9001. A maioria dos manuais está atualizada.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DOC_AUDIT_e84d2d7b-8221-4aa9-b606-4f8bc69d0b9e.pdf",
     "metrics_snapshot": {
-      "total_entregas": 5,
-      "bugs_encontrados": 0,
-      "taxa_sucesso": "100.0%"
+      "itens_verificados": 50,
+      "conformidade": "98%"
     },
-    "audit_type": "SPRINT_END",
-    "improvement_suggestion": "Reforçar revisão de documentação de APIs e padronizar terminologia."
+    "audit_type": "DOC_AUDIT",
+    "improvement_suggestion": "Revisar manual do usuário final para clareza."
+  },
+  {
+    "id": "c9724df5-8e92-4fc4-aedd-36690b2bd982",
+    "generation_date": "2025-11-27 17:59:10.254250",
+    "cycle_period": "CODEREVIEW_AUDIT - Nov/2025",
+    "summary": "Auditoria Técnica (Pull Requests). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_CODEREVIEW_AUDIT_c9724df5-8e92-4fc4-aedd-36690b2bd982.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "CODEREVIEW_AUDIT",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "bd3d810f-54d8-4e5f-b0fc-aaea4e3bbcf6",
+    "generation_date": "2025-11-27 17:59:10.307836",
+    "cycle_period": "CODEREVIEW_AUDIT - Nov/2025",
+    "summary": "Auditoria Técnica (Pull Requests). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_CODEREVIEW_AUDIT_bd3d810f-54d8-4e5f-b0fc-aaea4e3bbcf6.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "CODEREVIEW_AUDIT",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "0bcb140f-e2d5-4b6f-9cb1-8069faf26e8c",
+    "generation_date": "2025-11-27 17:59:10.324797",
+    "cycle_period": "DAILY_CHECK - Nov/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_0bcb140f-e2d5-4b6f-9cb1-8069faf26e8c.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "b0641735-fee3-4169-b1e8-8e0e70f7698f",
+    "generation_date": "2025-11-27 17:59:10.371055",
+    "cycle_period": "CODEREVIEW_AUDIT - Nov/2025",
+    "summary": "Auditoria Técnica (Pull Requests). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_CODEREVIEW_AUDIT_b0641735-fee3-4169-b1e8-8e0e70f7698f.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "CODEREVIEW_AUDIT",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "e0e0ef2d-f31c-46c5-ad79-dc25de9a6363",
+    "generation_date": "2025-11-27 17:59:10.399801",
+    "cycle_period": "DAILY_CHECK - Nov/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_e0e0ef2d-f31c-46c5-ad79-dc25de9a6363.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "11dbc134-1a64-4761-84dd-395006aea60e",
+    "generation_date": "2025-11-27 17:59:10.443364",
+    "cycle_period": "DAILY_CHECK - Nov/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_11dbc134-1a64-4761-84dd-395006aea60e.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "76755424-797f-425a-a8bc-ee28b0969646",
+    "generation_date": "2025-11-27 18:16:22.277441",
+    "cycle_period": "DAILY_CHECK - Nov/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_76755424-797f-425a-a8bc-ee28b0969646.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "5cd66928-28d8-41a5-9123-3f492ea48748",
+    "generation_date": "2025-11-27 18:16:22.280324",
+    "cycle_period": "DAILY_CHECK - Nov/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_5cd66928-28d8-41a5-9123-3f492ea48748.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "003b3dfd-1a91-406a-9526-12fcdcaedd1c",
+    "generation_date": "2025-11-27 18:24:24.965125",
+    "cycle_period": "DAILY_CHECK - Nov/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_003b3dfd-1a91-406a-9526-12fcdcaedd1c.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "feb0b36c-cd5c-4e04-947e-411e5731bebe",
+    "generation_date": "2025-11-27 18:27:16.079114",
+    "cycle_period": "DOC_AUDIT - Nov/2025",
+    "summary": "Auditoria de Documentação focada em ISO 9001. A maioria dos manuais está atualizada.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DOC_AUDIT_feb0b36c-cd5c-4e04-947e-411e5731bebe.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DOC_AUDIT",
+    "improvement_suggestion": "Revisar manual do usuário final para clareza."
+  },
+  {
+    "id": "e73706b4-7245-498b-8a8b-d8cbc19eae0e",
+    "generation_date": "2025-11-27 18:27:16.142505",
+    "cycle_period": "CODE_AUDIT - Nov/2025",
+    "summary": "Auditoria Técnica (Padrões de Projeto). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_CODE_AUDIT_e73706b4-7245-498b-8a8b-d8cbc19eae0e.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "CODE_AUDIT",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
   }
 ]

@@ -20,6 +20,7 @@ import ValidationWorkbench from "./pages/ValidationWorkbench";
 import ClientApproval from "./pages/ClientApproval";
 import TechnicalWorkbench from "./pages/TechnicalWorkbench";
 import QualityControlRoom from "./pages/QualityControlRoom"; // <--- NOVO IMPORT (Fase 6.1)
+import ScrumControlRoom from "./pages/ScrumControlRoom"; // <--- NOVO IMPORT (Fase SM.3)
 import DocumentationPage from "./pages/DocumentationPage"; // <--- NOVO IMPORT (Fase 6.8.2)
 import Chat from "./pages/Chat";
 import { ToastContainer, toast } from "react-toastify";
@@ -180,6 +181,14 @@ function App() {
                   element={
                     <TailwindWrapper>
                       <QualityControlRoom />
+                    </TailwindWrapper>
+                  }
+                />
+                <Route
+                  path="/scrum-room" // Fase SM.3
+                  element={
+                    <TailwindWrapper>
+                      <ScrumControlRoom />
                     </TailwindWrapper>
                   }
                 />

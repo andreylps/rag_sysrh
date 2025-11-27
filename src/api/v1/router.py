@@ -54,6 +54,10 @@ api_router.include_router(
 )
 api_router.include_router(audit.router, prefix="/audit", tags=["audit"])  # Nova rota
 
+from src.api.v1.endpoints import scrum
+
+api_router.include_router(scrum.router, prefix="/scrum", tags=["scrum"])
+
 # Rota de RCM (Fluxo Evolutivo)
 api_router.include_router(rcm.router, prefix="/rcm", tags=["rcm (fluxo evolutivo)"])
 

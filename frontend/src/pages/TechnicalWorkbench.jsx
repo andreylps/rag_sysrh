@@ -267,7 +267,13 @@ const TechnicalWorkbench = () => {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500"></div>
             </div>
           ) : (
-            <HistoryTable issues={historyIssues} />
+            <HistoryTable
+              issues={historyIssues}
+              onIssueUpdate={() => {
+                // Força recarregamento do histórico
+                setHistoryIssues([]); // Limpa para forçar o useEffect a buscar novamente
+              }}
+            />
           )}
         </div>
       )}

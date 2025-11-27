@@ -1,11 +1,9 @@
 import asyncio
-import base64
 import json
 import logging
 from typing import List
 
 from fastapi import APIRouter, Body, Depends, WebSocket, WebSocketDisconnect
-from langchain_core.messages import HumanMessage
 from sqlalchemy.orm import Session
 
 # Import Database & Services
@@ -110,14 +108,52 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
     chat_service = ChatService(db)
 
     # Ensure agents are initialized in a non-blocking way
+    with open("debug_chat.log", "a") as f:
+        f.write("DEBUG: Initializing agents...\n")
     logger.info("Initializing agents...")
     try:
         bi_agent, docs_agent = await asyncio.to_thread(get_agents)
+        with open("debug_chat.log", "a") as f:
+            f.write("DEBUG: Agents initialized successfully.\n")
         logger.info("Agents initialized successfully.")
     except Exception as e:
+        with open("debug_chat.log", "a") as f:
+            f.write(f"DEBUG: Failed to initialize agents: {e}\n")
         logger.error(f"Failed to initialize agents: {e}")
         await manager.disconnect(websocket)
         return
+
+    # --- SETUP TOOL CALLING ---
+    try:
+        with open("debug_chat.log", "a") as f:
+            f.write("DEBUG: Setting up tools...\n")
+        from langchain_core.messages import (
+            AIMessage,
+            HumanMessage,
+            SystemMessage,
+            ToolMessage,
+        )
+
+        from src.rag_sysrh.tools.solicitation_tools import CreateSolicitationTool
+
+        solicitation_tool = CreateSolicitationTool()
+        # Bind tools to the LLM (if supported by the provider, assuming OpenAI/GPT-4)
+        if docs_agent and hasattr(docs_agent.llm, "bind_tools"):
+            with open("debug_chat.log", "a") as f:
+                f.write("DEBUG: Binding tools to LLM...\n")
+            llm_with_tools = docs_agent.llm.bind_tools([solicitation_tool])
+        else:
+            llm_with_tools = docs_agent.llm if docs_agent else None
+            with open("debug_chat.log", "a") as f:
+                f.write(
+                    "DEBUG: LLM does not support bind_tools or agent not initialized.\n"
+                )
+            logger.warning("LLM does not support bind_tools or agent not initialized.")
+    except Exception as e:
+        with open("debug_chat.log", "a") as f:
+            f.write(f"DEBUG: Failed to setup tools: {e}\n")
+        logger.error(f"Failed to setup tools: {e}", exc_info=True)
+        llm_with_tools = None
 
     try:
         while True:
@@ -134,7 +170,7 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
                 text_input = payload.get("text", "")
                 attachments = payload.get("attachments", [])
                 model_provider = payload.get("model", "openai")
-                session_id = payload.get("sessionId")  # Get session ID from payload
+                session_id = payload.get("sessionId")
             except json.JSONDecodeError:
                 text_input = raw_data
                 model_provider = "openai"
@@ -150,248 +186,130 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
             # Switch LLM if needed
             if docs_agent:
                 docs_agent.set_llm(model_provider)
+                # Re-bind tools after switching LLM if necessary
+                if hasattr(docs_agent.llm, "bind_tools"):
+                    llm_with_tools = docs_agent.llm.bind_tools([solicitation_tool])
+
             if bi_agent:
                 bi_agent.set_llm(model_provider)
 
-            # Simple routing logic
             response = ""
-            lower_data = text_input.lower()
-
-            # Heuristic routing
-            is_bi_query = any(
-                keyword in lower_data
-                for keyword in [
-                    "quantos",
-                    "total",
-                    "valor",
-                    "status",
-                    "dashboard",
-                    "faturamento",
-                    "custo",
-                ]
-            )
-
-            # Check for greetings
-            greetings = [
-                "bom dia",
-                "boa tarde",
-                "boa noite",
-                "oi",
-                "olá",
-                "ola",
-                "obrigado",
-                "obrigada",
-                "tchau",
-                "até mais",
-                "valeu",
-            ]
-            is_greeting = (
-                any(greet in lower_data for greet in greetings)
-                and len(lower_data.split()) < 25
-            )
 
             try:
-                if is_greeting and not attachments and docs_agent:
-                    # Resposta conversacional dinâmica usando LLM (Sentiment Analysis)
-                    logger.info("Generating dynamic greeting/farewell with LLM")
-
-                    prompt_conversational = f"""
-                    Você é o Assistente Virtual do sistema RAG SYS-RH.
-                    O usuário enviou uma mensagem curta de interação social: "{text_input}"
-                    
-                    Sua tarefa é responder de forma breve, natural e humana, espelhando o sentimento do usuário (Rapport).
-                    
-                    IMPORTANTE: Retorne APENAS a mensagem de resposta para o usuário. NÃO inclua explicações, análises de sentimento ou rótulos como "Resposta:".
-                    """
-
-                    try:
-                        llm_response = await docs_agent.llm.ainvoke(
-                            [HumanMessage(content=prompt_conversational)]
+                # --- CONVERSATION HISTORY & CONTEXT ---
+                history_messages = []
+                if session_id:
+                    # Fetch last 10 messages for context
+                    raw_history = chat_service.get_messages(session_id)
+                    # Assuming raw_history is ordered by time asc
+                    for msg in raw_history[-10:]:
+                        # Handle both dict and object (just in case)
+                        role = (
+                            msg.sender if hasattr(msg, "sender") else msg.get("sender")
                         )
-                        response = llm_response.content
-                    except Exception as e:
-                        logger.error(f"Failed to generate dynamic greeting: {e}")
-                        response = "Olá! Como posso ajudar você hoje?"
+                        content = (
+                            msg.content
+                            if hasattr(msg, "content")
+                            else msg.get("content")
+                        )
 
-                elif is_bi_query and bi_agent and not attachments:
-                    # Use BI Agent (Text only for now)
-                    logger.info("Routing to AgenteBI")
-                    result = bi_agent.responder_pergunta(text_input)
-                    response = result.get(
-                        "resposta", "Não consegui obter uma resposta do BI."
+                        if role == "user":
+                            history_messages.append(HumanMessage(content=content))
+                        elif role == "ai":
+                            history_messages.append(AIMessage(content=content))
+
+                # 1. RAG Retrieval (Context)
+                relevant_docs = []
+                if text_input.strip() and docs_agent:
+                    vectorstore = docs_agent.retriever.vectorstore
+                    results = vectorstore.similarity_search_with_score(text_input, k=3)
+                    relevant_docs = [doc for doc, score in results if score >= 0.80]
+
+                context_text = "\n\n".join([d.page_content for d in relevant_docs])
+
+                # 2. System Prompt Construction
+                logger.info("Constructing system prompt...")
+                system_prompt = f"""
+Você é o Assistente Virtual Inteligente do sistema RAG SYS-RH.
+
+**SUAS CAPACIDADES:**
+1. **Responder Dúvidas:** Use o contexto abaixo para responder perguntas sobre o sistema.
+2. **Abrir Solicitações:** Se o usuário relatar um problema, bug ou pedir uma melhoria, **OFEREÇA** abrir uma solicitação.
+   - Se o usuário aceitar, colete: Título (resumido), Descrição detalhada, Prioridade e Tipo.
+   - **VOCÊ DEVE CHAMAR A FERRAMENTA `create_solicitation` PARA REGISTRAR.**
+   - **NÃO RESPONDA COM TEXTO DIZENDO QUE VAI FAZER. FAÇA!**
+   - **CHAME A FERRAMENTA.**
+
+**DIRETRIZES:**
+- Seja prestativo e profissional.
+- Se o usuário disser "meu sistema travou", pergunte detalhes e ofereça abrir um chamado.
+- Se o usuário perguntar "como faço X", explique usando o contexto.
+- NÃO invente informações se não estiverem no contexto.
+
+**CONTEXTO RECUPERADO:**
+{context_text}
+"""
+                # system_prompt = system_prompt.replace(
+                #     "{contexto_extra_placeholder}", context_text
+                # )
+
+                messages = (
+                    [SystemMessage(content=system_prompt)]
+                    + history_messages
+                    + [HumanMessage(content=text_input)]
+                )
+
+                # Inject reminder if user mentions priority (hack to force tool)
+                if "prioridade" in text_input.lower():
+                    messages.append(
+                        SystemMessage(
+                            content="O usuário forneceu os dados. CHAME A FERRAMENTA create_solicitation AGORA."
+                        )
                     )
 
-                elif docs_agent:
-                    # Use Docs Agent (RAG + Vision)
-                    logger.info("Routing to AgenteDocumentacao (RAG/Vision)")
+                # 3. LLM Execution with Tools
+                logger.info("Invoking LLM...")
+                if llm_with_tools:
+                    logger.info("Using LLM with tools.")
+                    ai_msg = await llm_with_tools.ainvoke(messages)
+                    logger.info(
+                        f"LLM response received. Tool calls: {ai_msg.tool_calls}"
+                    )
 
-                    # Process Attachments
-                    image_content = []
-                    file_context = ""
-
-                    for att in attachments:
-                        if att["type"].startswith("image/"):
-                            # Prepare for Vision Model
-                            image_content.append(
-                                {
-                                    "type": "image_url",
-                                    "image_url": {"url": att["content"]},
-                                }
-                            )
-                        elif att["type"] in [
-                            "text/plain",
-                            "text/csv",
-                            "application/json",
-                        ]:
-                            # Decode text files
-                            try:
-                                content_bytes = base64.b64decode(
-                                    att["content"].split(",")[1]
+                    # Check for Tool Calls
+                    if ai_msg.tool_calls:
+                        logger.info(f"Tool Call Detected: {ai_msg.tool_calls}")
+                        for tool_call in ai_msg.tool_calls:
+                            if tool_call["name"] == "create_solicitation":
+                                # Execute Tool
+                                logger.info("Executing create_solicitation tool...")
+                                tool_output = await solicitation_tool.ainvoke(
+                                    tool_call["args"]
                                 )
-                                decoded_text = content_bytes.decode("utf-8")
-                                file_context += f"\n\n--- Conteúdo do Arquivo {att['name']} ---\n{decoded_text}\n"
-                            except Exception as e:
-                                logger.error(
-                                    f"Failed to decode file {att['name']}: {e}"
-                                )
-
-                    # 1. Retrieve context with score (only if there is text input)
-                    relevant_docs = []
-                    if text_input.strip():
-                        vectorstore = docs_agent.retriever.vectorstore
-                        results = vectorstore.similarity_search_with_score(
-                            text_input, k=4
-                        )
-                        logger.info(f"RAG Retrieval: Found {len(results)} raw results.")
-                        for doc, score in results:
-                            logger.info(
-                                f" - Doc: {doc.metadata.get('source', 'unknown')} | Score: {score}"
-                            )
-
-                        relevant_docs = [
-                            doc for doc, score in results if score >= 0.85
-                        ]  # Lowered threshold slightly for testing
-                        logger.info(
-                            f"RAG Retrieval: {len(relevant_docs)} docs passed threshold (>= 0.85)."
-                        )
-
-                    # Heurística para detectar intenção de suporte/correção
-                    support_keywords = [
-                        "corrigir",
-                        "erro",
-                        "bug",
-                        "defeito",
-                        "falha",
-                        "solicita",
-                        "cadastrar",
-                        "criar",
-                        "abrir",
-                        "evolu",
-                        "melhoria",
-                        "chamado",
-                        "ticket",
-                    ]
-                    is_support_query = any(k in lower_data for k in support_keywords)
-
-                    # Heurística para mensagens curtas (evitar busca na web para chitchat/comandos)
-                    is_short_message = len(text_input.split()) < 10
-
-                    # Decide flow: RAG, Web Search, or Vision/File Analysis
-                    if (
-                        not relevant_docs
-                        and not attachments
-                        and not is_support_query
-                        and not is_short_message
-                    ):
-                        logger.info(
-                            "Low relevance scores, not support, not short. Falling back to Web Search."
-                        )
-                        try:
-                            from duckduckgo_search import DDGS
-
-                            web_results = ""
-                            with DDGS() as ddgs:
-                                results = list(ddgs.text(text_input, max_results=3))
-                                if results:
-                                    web_results = "\n\n".join(
-                                        [
-                                            f"- **{r['title']}**: {r['body']} ({r['href']})"
-                                            for r in results
-                                        ]
+                                logger.info(f"Tool output: {tool_output}")
+                                # Append Tool Message to history (simulated for this turn)
+                                messages.append(ai_msg)
+                                messages.append(
+                                    ToolMessage(
+                                        content=tool_output,
+                                        tool_call_id=tool_call["id"],
                                     )
-                                else:
-                                    web_results = "Nenhum resultado encontrado na web."
+                                )
 
-                            prompt_web = f"""
-                            Você é um assistente útil. O usuário fez uma pergunta que não consta na base de conhecimento interna.
-                            Responda com base nos resultados da pesquisa na web abaixo.
-                            Resultados da Web:
-                            {web_results}
-                            Pergunta:
-                            {text_input}
-                            Instrução:
-                            Responda de forma amigável e direta.
-                            """
-                            llm_response = await docs_agent.llm.ainvoke(
-                                [HumanMessage(content=prompt_web)]
-                            )
-                            response = (
-                                "⚠️ **Aviso:** Esta pergunta está fora do contexto do sistema RAG SYS-RH. "
-                                "A resposta abaixo foi obtida via pesquisa na web e não reflete necessariamente os dados internos.\n\n"
-                                f"{llm_response.content}"
-                            )
-                        except Exception as e:
-                            logger.error(f"Web search failed: {e}")
-                            response = "Não encontrei informações relevantes na base interna e não consegui pesquisar na web no momento."
-
+                                # Get final response from LLM incorporating tool output
+                                logger.info("Invoking LLM again with tool output...")
+                                final_response = await llm_with_tools.ainvoke(messages)
+                                response = final_response.content
                     else:
-                        # 2. Generate answer using RAG + Attachments
-                        context_text = "\n\n".join(
-                            [d.page_content for d in relevant_docs]
-                        )
-
-                        # Append file context if any
-                        if file_context:
-                            context_text += file_context
-
-                        prompt_text = f"""
-                        Você é o Assistente Virtual do sistema RAG SYS-RH.
-                        
-                        **DIRETRIZES IMPORTANTES:**
-                        1. **PRIORIDADE MÁXIMA:** Se o usuário perguntar **como o sistema funciona**, **como realizar uma tarefa** ou buscar informações técnicas (ex: "Como cadastro um usuário?", "O que é o módulo X?"), **RESPONDA** com base no Contexto abaixo. **NÃO** o mande para a Governança nestes casos.
-                        
-                        2. Apenas se o usuário manifestar **CLARAMENTE** a intenção de **abrir um chamado técnico AGORA**, **relatar um bug** ou **pedir uma nova funcionalidade**:
-                           - Oriente-o a acessar a opção **"Governança & IA"** no menu lateral.
-                           - Explique que lá ele encontrará o formulário para cadastrar sua demanda.
-
-                        2. Para outras perguntas, use o contexto abaixo recuperado da base de conhecimento (e arquivos anexados, se houver).
-                        
-                        Contexto:
-                        {context_text}
-                        
-                        Pergunta:
-                        {text_input}
-                        """
-
-                        # Construct Message
-                        if image_content:
-                            # Multimodal Message
-                            message_content = [
-                                {"type": "text", "text": prompt_text}
-                            ] + image_content
-                            message = HumanMessage(content=message_content)
-                        else:
-                            # Text Message
-                            message = HumanMessage(content=prompt_text)
-
-                        llm_response = await docs_agent.llm.ainvoke([message])
-                        response = llm_response.content
-
+                        response = ai_msg.content
                 else:
-                    response = "Desculpe, os agentes do sistema não estão disponíveis no momento."
+                    # Fallback without tools
+                    logger.info("Using LLM without tools (Fallback).")
+                    ai_msg = await docs_agent.llm.ainvoke(messages)
+                    response = ai_msg.content
 
             except Exception as e:
-                logger.error(f"Error processing request: {e}")
+                logger.error(f"Error processing request: {e}", exc_info=True)
                 response = f"Ocorreu um erro ao processar sua solicitação: {str(e)}"
 
             # Save AI Response

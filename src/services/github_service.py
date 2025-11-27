@@ -431,3 +431,26 @@ async def upload_file_to_repo(
         return f"https://github.com/{repo.full_name}/blob/{branch}/{target_path}"
 
     return await asyncio.to_thread(_upload_sync)
+
+
+async def get_issue_events(issue_number: int) -> list[dict]:
+    """
+    Retorna a lista de eventos de uma issue (ex: labeled, milestoned, renamed).
+    Útil para detectar loops de status.
+    """
+
+    def _get_events_sync():
+        issue = _get_issue_sync(issue_number)
+        events = []
+        for event in issue.get_events():
+            events.append(
+                {
+                    "event": event.event,
+                    "created_at": event.created_at.isoformat(),
+                    "label": event.label.name if event.label else None,
+                    "actor": event.actor.login if event.actor else None,
+                }
+            )
+        return events
+
+    return await asyncio.to_thread(_get_events_sync)

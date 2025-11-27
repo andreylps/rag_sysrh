@@ -62,7 +62,7 @@ async def get_validation_history():
 
         # 3. Issues Abertas mas já validadas (Label genérica)
         validated = await search_closed_issues(
-            query="is:issue is:open label:status:validado", limit=50
+            query=f"is:issue is:open label:{LABEL_VALIDADO}", limit=50
         )
 
         # 4. Fast Track (Aguardando Dev - já passou pela validação ou foi direto)

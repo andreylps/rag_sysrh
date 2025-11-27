@@ -1,6 +1,6 @@
 import React from "react";
 
-const HistoryTable = ({ issues }) => {
+const HistoryTable = ({ issues, onIssueUpdate }) => {
   if (!issues || issues.length === 0) {
     return (
       <div className="text-center p-8 text-slate-500 bg-slate-800/30 rounded-lg border border-slate-700 border-dashed">
@@ -100,8 +100,11 @@ const HistoryTable = ({ issues }) => {
                             { method: "POST" }
                           );
                           if (response.ok) {
-                            // Recarrega a página para atualizar o estado (simples e eficaz)
-                            window.location.reload();
+                            if (onIssueUpdate) {
+                              onIssueUpdate();
+                            } else {
+                              window.location.reload();
+                            }
                           } else {
                             alert("Erro ao homologar.");
                           }

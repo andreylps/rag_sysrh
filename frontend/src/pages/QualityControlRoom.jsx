@@ -314,7 +314,13 @@ const QualityControlRoom = () => {
 
     const getEventsForDay = (day) => {
       return auditSchedule.filter((item) => {
-        const itemDate = new Date(item.scheduled_date);
+        if (!item.scheduled_date) return false;
+        // Normalizar data (substituir espaço por T se necessário)
+        const dateStr = item.scheduled_date.replace(" ", "T");
+        const itemDate = new Date(dateStr);
+
+        if (isNaN(itemDate.getTime())) return false;
+
         // Normalizar para evitar problemas de fuso horário
         // Comparar dia, mês e ano explicitamente
         return (
@@ -428,6 +434,7 @@ const QualityControlRoom = () => {
           {/* Days */}
           {daysArray.map((day) => {
             const events = getEventsForDay(day);
+
             const isToday =
               day === new Date().getDate() &&
               currentMonth.getMonth() === new Date().getMonth() &&

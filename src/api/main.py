@@ -41,8 +41,40 @@ async def lifespan(app: FastAPI):
     scheduler = AsyncIOScheduler()
     # Roda a cada 1 hora (pode ajustar para minutes=1 para testes rápidos)
     scheduler.add_job(check_for_stale_issues, "interval", hours=1)
+
+    # Inicializa o Scrum Master Agent (Fase SM.1)
+    from src.services.scrum_master_service import scrum_master_service
+
+    # Roda a cada 2 semanas (simulação de ciclo de Sprint)
+    scheduler.add_job(scrum_master_service.plan_next_sprint, "interval", weeks=2)
+
+    # Monitoramento Diário de Risco (Geral) - 09:00
+    scheduler.add_job(
+        scrum_master_service.monitor_active_sprint_issues,
+        "cron",
+        hour=9,
+        minute=0,
+        args=[False],
+    )
+
+    # Monitoramento Horário de Críticos (SLA Imediato)
+    scheduler.add_job(
+        scrum_master_service.monitor_active_sprint_issues,
+        "interval",
+        hours=1,
+        args=[True],
+    )
+
+    # Snapshot Diário do Burndown - 20:00 (Fase SM.5)
+    scheduler.add_job(
+        scrum_master_service.take_daily_snapshot,
+        "cron",
+        hour=20,
+        minute=0,
+    )
+
     scheduler.start()
-    print("🛡️ Quality Monitor Scheduler iniciado.")
+    print("🛡️ Quality Monitor & Scrum Master Scheduler iniciado.")
 
     # Inicializa o Scheduler do Auditor Autônomo (Fase 6.9)
     from src.services.qa_scheduler_service import qa_scheduler

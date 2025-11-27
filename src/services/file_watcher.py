@@ -29,6 +29,9 @@ class KnowledgeBaseEventHandler(FileSystemEventHandler):
         if filename.startswith("~") or filename.startswith("."):
             return  # Ignore temp/hidden files
 
+        if filename.endswith(".json"):
+            return  # Ignore system JSON files (schedules, reports)
+
         logger.info(f"Detected change in {event.src_path} ({event.event_type})")
 
         # Notify start of update

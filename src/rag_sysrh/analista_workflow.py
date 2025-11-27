@@ -547,63 +547,10 @@ class AnalistaWorkflow:
 
         return relatorio_final
 
-    async def processar_rejeicao(self, rcm_text: str, client_feedback: str) -> str:
-        """
-        Processa a rejeição do cliente, revisando o RCM com base no feedback.
-        """
-        logging.info("Iniciando revisão automática de RCM baseada em feedback...")
-
-        prompt = ChatPromptTemplate.from_template(
-            """Você é um Analista de Sistemas Sênior responsável por ajustar uma Proposta Técnica (RCM).
-            
-            O cliente REJEITOU a proposta atual com o seguinte feedback:
-            "{feedback}"
-
-            <rcm_atual>
-            {rcm_text}
-            </rcm_atual>
-
-            <instrucoes>
-            1. Analise o feedback do cliente e identifique o que precisa ser alterado no RCM.
-            2. Reescreva o RCM mantendo a estrutura original, mas aplicando as correções solicitadas.
-            3. Adicione uma seção no início do documento chamada "## 📝 Notas de Revisão (IA)" explicando brevemente o que foi alterado para atender ao cliente.
-            4. Se o feedback for vago, faça o melhor esforço para interpretar ou adicione notas perguntando ao analista humano.
-            5. Mantenha o tom profissional e técnico.
-            6. CRÍTICO: Você DEVE manter as seções de métricas originais no final ou no corpo do texto, especificamente:
-               - "**Estimativa de Pontos de Função (PF):** X PF"
-               - "**Prazo Estimado:** Y dias"
-               Não remova essas informações, pois elas alimentam o dashboard do cliente.
-            </instrucoes>
-
-            RCM Revisado:"""
-        )
-
-        chain = prompt | self.llm | StrOutputParser()
-
-        try:
-            novo_rcm = await chain.ainvoke(
-                {"feedback": client_feedback, "rcm_text": rcm_text}
-            )
-            logging.info("RCM revisado com sucesso pela IA.")
-            return novo_rcm
-        except Exception as e:
-            logging.error(f"Erro ao revisar RCM: {e}")
-            # Em caso de erro, retorna o original com uma nota
-            return f"## ⚠️ Erro na Revisão Automática\n\nNão foi possível processar o feedback automaticamente. Erro: {e}\n\n---\n\n{rcm_text}"
-
     def run(self, solicitacao: str) -> RelatorioAnalise:
         """Executa o workflow completo para uma dada solicitação."""
         # Inicializa o estado com todas as chaves para satisfazer o type checker.
-        initial_state: WorkflowState = {
-            "solicitacao_original": solicitacao,
-            "classificacao": None,
-            "dados_historico": None,
-            "dados_rcm_especifico": None,
-            "dados_manuais": None,
-            "dados_metricas": None,
-            "diagnostico": None,
-            "relatorio_final": None,
-        }
+
         # invoke pode falhar se tiver nós async. O ideal é usar arun.
         # Mas para manter compatibilidade, tentamos invoke.
         # Se finalizar_analise for async, invoke deve lidar se o runtime permitir,

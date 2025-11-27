@@ -105,12 +105,23 @@ async def get_review_history():
         # Opcionalmente, poderíamos filtrar por labels de "tipo" se quiséssemos ser mais específicos,
         # mas "Histórico de Revisões" pode implicar "Histórico de Entregas".
 
-        query = "is:issue is:closed"
-        issues = await search_closed_issues(query=query, limit=50)
+        # 1. Issues Fechadas (Histórico Geral)
+        query_closed = "is:issue is:closed"
+        closed_issues = await search_closed_issues(query=query_closed, limit=50)
 
-        # Ordenar por data de fechamento decrescente
+        # 2. Issues Abertas em Homologação (Já passaram pelo review técnico)
+        query_homologation = "is:issue is:open label:status:aceite-homologacao"
+        homologation_issues = await search_closed_issues(
+            query=query_homologation, limit=50
+        )
+
+        # Combinar e remover duplicatas
+        all_issues = closed_issues + homologation_issues
+        unique_issues = {i["number"]: i for i in all_issues}.values()
+
+        # Ordenar por data de fechamento decrescente (ou updated_at)
         sorted_issues = sorted(
-            issues,
+            unique_issues,
             key=lambda x: x["closed_at"] or x.get("updated_at") or "",
             reverse=True,
         )

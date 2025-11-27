@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from src.models.qa_models import AuditSchedule, PDCAReport
-from src.services.audit_service import execute_sprint_end_audit, get_all_reports
+from src.services.audit_service import audit_service, get_all_reports
 from src.services.qa_scheduler_service import qa_scheduler
 
 router = APIRouter()
@@ -13,8 +13,8 @@ router = APIRouter()
 
 @router.get("/schedule", response_model=List[AuditSchedule])
 async def get_schedule():
-    """Retorna a agenda de auditorias futuras."""
-    return qa_scheduler.get_upcoming_audits()
+    """Retorna a agenda de auditorias (histórico e futuro)."""
+    return qa_scheduler.get_all_schedules()
 
 
 @router.get("/reports", response_model=List[PDCAReport])
@@ -59,7 +59,7 @@ async def trigger_sprint_audit():
     start_date = end_date - timedelta(days=14)  # 2 semanas aprox
 
     try:
-        report = await execute_sprint_end_audit(start_date, end_date)
+        report = await audit_service.execute_sprint_end_audit(start_date, end_date)
         return {
             "status": "success",
             "report_id": report.id,

@@ -15,7 +15,7 @@ import {
   Code,
   ShieldCheck, // <--- Novo ícone (Fase 6.1)
   BookOpen, // <--- Novo ícone (Fase 6.8.2)
-  Mail, // <--- Novo ícone para Central de Solicitações
+  Inbox, // <--- Novo ícone para Central de Solicitações
 } from "lucide-react";
 import "./Sidebar.css";
 
@@ -43,7 +43,7 @@ const Sidebar = ({ isAdmin, toggleAdmin }) => {
             to="/governance"
             className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}
           >
-            <Mail
+            <Inbox
               size={20}
               className="logo-icon"
               style={{ width: "20px", height: "20px" }}
@@ -131,6 +131,15 @@ const Sidebar = ({ isAdmin, toggleAdmin }) => {
             >
               <ShieldCheck size={20} />
               <span>Sala de Qualidade</span>
+            </NavLink>
+            <NavLink
+              to="/scrum-room"
+              className={({ isActive }) =>
+                `nav-item admin-item ${isActive ? "active" : ""}`
+              }
+            >
+              <LayoutDashboard size={20} />
+              <span>Sala Scrum</span>
             </NavLink>
             <NavLink
               to="/knowledge"
