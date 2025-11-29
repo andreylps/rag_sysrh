@@ -11,16 +11,16 @@ logging.basicConfig(
 )
 
 
-def main():
+def main() -> None:
     """
     Função principal para executar perguntas contra o grafo Neo4j usando RAG.
     """
-    # Carrega as variáveis de ambiente (NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, OPENAI_API_KEY)
+    # Carrega as variáveis de ambiente (NEO4J_URI, NEO4J_USER, NEO4J_PASSWORD, OPENAI_API_KEY)  # noqa: E501
     load_dotenv()
 
     # Validação de que as chaves da API estão configuradas
     if not os.getenv("OPENAI_API_KEY"):
-        logging.error("A variável de ambiente OPENAI_API_KEY não foi definida.")
+        logging.error("A variável de ambiente OPENAI_API_KEY não foi definida.")  # noqa: LOG015
         return
 
     # Conecta ao grafo Neo4j usando a integração da LangChain
@@ -31,14 +31,14 @@ def main():
             password=os.getenv("NEO4J_PASSWORD"),
             enhanced_schema=False,  # Adicione esta linha
         )
-        logging.info("Conexão com o Neo4j estabelecida via LangChain.")
-        # Opcional: Atualiza o schema para o LLM saber quais nós e relacionamentos existem
+        logging.info("Conexão com o Neo4j estabelecida via LangChain.")  # noqa: LOG015
+        # Opcional: Atualiza o schema para o LLM saber quais nós e relacionamentos existem  # noqa: E501
         graph.refresh_schema()
-        logging.info("Schema do grafo atualizado.")
-        logging.info("Schema detectado: %s", graph.schema)
+        logging.info("Schema do grafo atualizado.")  # noqa: LOG015
+        logging.info("Schema detectado: %s", graph.schema)  # noqa: LOG015
 
     except Exception as e:
-        logging.exception("Falha ao conectar ou atualizar o schema do Neo4j: %s", e)
+        logging.exception("Falha ao conectar ou atualizar o schema do Neo4j: %s", e)  # noqa: LOG015, TRY401
         return
 
     # Configura o LLM que será usado para traduzir a pergunta para Cypher
@@ -61,7 +61,7 @@ def main():
         if question.lower() == "sair":
             break
 
-        # Adiciona instruções detalhadas (prompt engineering) para o LLM gerar Cypher mais robusto
+        # Adiciona instruções detalhadas (prompt engineering) para o LLM gerar Cypher mais robusto  # noqa: E501
         enhanced_question = f"""Usando o schema fornecido, responda à pergunta.
         Instruções importantes para a geração de Cypher:
         1. Se a pergunta envolver um Cliente, lembre-se que a direção do relacionamento é (Solicitacao)-[:ASSOCIADA_A]->(Cliente).
@@ -75,8 +75,8 @@ def main():
         6. Se a pergunta for sobre uma "Regra de Negócio" ou "RN" (ex: "RN001"), procure por esse termo exato (ex: "RN001") no texto completo de um nó `:Manual`. Exemplo: `MATCH (m:Manual) WHERE m.texto_completo CONTAINS 'RN001' RETURN m.texto_completo`.
         7. Para perguntas complexas com múltiplos critérios (ex: um tópico e uma regra), combine as buscas na cláusula `WHERE` usando `AND` para obter resultados mais precisos. Exemplo para "Qual a RN001 para Proposta de Consignação?": `MATCH (m:Manual) WHERE m.texto_completo CONTAINS 'Proposta de Consignação' AND m.texto_completo CONTAINS 'RN001' RETURN m.texto_completo`.
         8. **IMPORTANTE**: A consulta Cypher gerada NUNCA deve terminar com um ponto final (.) ou qualquer outra pontuação.
-        
-        Pergunta: {question}"""
+
+        Pergunta: {question}"""  # noqa: E501
 
         result = chain.invoke({"query": enhanced_question})
         print("\nResposta:")

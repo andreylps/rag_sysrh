@@ -1,0 +1,14 @@
+rcm_id;caso_teste_id;descricao_teste;status_teste;data_execucao;responsavel_teste;versao_software
+23569-2025;CT-23569-2025-01;Validar tela principal com perfil de usuário padrão;APROVADO;2025-11-15;qa_ana;2.1.0
+23569-2025;CT-23569-2025-02;Verificar bloqueio de acesso para perfil sem permissão;APROVADO;2025-11-15;qa_ana;2.1.0
+23569-2025;CT-23569-2025-03;Testar fluxo de login com credenciais inválidas;APROVADO;2025-11-15;qa_ana;2.1.0
+3225-2025;CT-3225-2025-01;Testar cálculo de horas extras 50% (dia útil);APROVADO;2025-11-16;qa_bruno;2.1.1
+3225-2025;CT-3225-2025-02;Testar cálculo de horas extras 100% (feriado);APROVADO;2025-11-16;qa_bruno;2.1.1
+3225-2025;CT-3225-2025-03;Verificar impacto do cálculo no relatório de folha de pagamento;REPROVADO;2025-11-16;qa_bruno;2.1.1
+29723-2024;CT-29723-2024-01;Validar correção de bug na listagem de servidores ativos;APROVADO;2025-11-17;qa_ana;2.1.2
+29723-2024;CT-29723-2024-02;Testar paginação e filtros na listagem de servidores;APROVADO;2025-11-17;qa_ana;2.1.2
+24328-2025;CT-24328-2025-01;Testar nova funcionalidade de agendamento de férias para múltiplos colaboradores;APROVADO;2025-11-18;qa_carlos;2.2.0
+24328-2025;CT-24328-2025-02;Verificar regras de bloqueio para agendamentos (ex: menos de 1 ano de casa, férias sobrepostas);APROVADO;2025-11-18;qa_carlos;2.2.0
+24328-2025;CT-24328-2025-03;Validar notificações por e-mail após agendamento de férias;APROVADO;2025-11-18;qa_carlos;2.2.0
+24326-2025;CT-24326-2025-01;Validar migração de dados de dependentes (massa de dados grande);PENDENTE;;;2.2.1
+24326-2025;CT-24326-2025-02;Verificar integridade dos dados migrados em relatórios;PENDENTE;;;2.2.1

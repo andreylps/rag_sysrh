@@ -1,15 +1,18 @@
-import json
 import logging
 import os
 
+# import guardrails as gd
 from dotenv import load_dotenv
 from langchain_community.vectorstores import Neo4jVector
+from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.tools import Tool
 from langchain_neo4j import Neo4jGraph
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+
+# from rag_sysrh.guardrails.rail_specs import rail_spec_cypher
 
 # Configura o logging
 logging.basicConfig(
@@ -34,7 +37,7 @@ LLM_MODEL = "gpt-4-turbo"
 LLM_TEMPERATURE = 0
 
 
-def get_tools() -> list[Tool]:
+def get_tools() -> list[Tool]:  # noqa: C901, PLR0915
     """
     Cria e retorna a lista de ferramentas (agentes especialistas) para o orquestrador.
     """
@@ -76,7 +79,7 @@ def get_tools() -> list[Tool]:
     retriever = vector_index.as_retriever(search_kwargs={"k": 3})
     # Cadeia LCEL para busca semântica
     semantic_qa_chain = (
-        {"context": retriever, "input": RunnablePassthrough()}
+        {"context": retriever, "input": RunnablePassthrough()}  # type: ignore  # noqa: PGH003
         | qa_prompt
         | llm
         | StrOutputParser()
@@ -84,7 +87,11 @@ def get_tools() -> list[Tool]:
 
     def run_semantic_chain(question: str) -> str:
         """Executa a cadeia semântica e retorna apenas a resposta."""
-        return semantic_qa_chain.invoke(question)
+        try:
+            return semantic_qa_chain.invoke(question)  # type: ignore  # noqa: PGH003
+        except Exception as e:
+            logging.exception("Falha na execução da cadeia semântica: %s", e)  # noqa: LOG015, TRY401
+            return "Desculpe, ocorreu um erro ao buscar a informação nos manuais."
 
     semantic_tool = Tool(
         name="Semantic_Question_Answering",
@@ -95,38 +102,103 @@ def get_tools() -> list[Tool]:
     )
 
     # --- FERRAMENTA 2: BUSCA FATORIAL (CYPHER) ---
+    # Atualizamos o prompt para solicitar JSON compatível com o Guardrail
     cypher_qa_prompt = ChatPromptTemplate.from_template(
         """Você é um expert em Neo4j. Sua tarefa é gerar uma consulta Cypher a partir de uma pergunta do usuário, usando o schema do grafo.
 Instruções importantes para a geração de Cypher:
 1. Para perguntas sobre 'procedimentos', 'regras' ou 'como fazer', busque no nó `:Manual` usando `CONTAINS` na propriedade `texto`. Exemplo para 'férias': `MATCH (c:Chunk)-[:PARTE_DE]->(m:Manual) WHERE c.texto CONTAINS 'férias' RETURN c.texto`.
-2. Quando uma pergunta pedir para listar ou identificar uma 'solicitação', sempre retorne a propriedade `Title` do nó `Solicitacao`, que contém o número do chamado (ex: '3225/2025'). Exemplo para 'alesc': `MATCH (s:Solicitacao)-[:ASSOCIADA_A]->(c:Cliente) WHERE toLower(c.nome) = 'alesc' RETURN s.Title`.
-3. Para buscar por número de processo como '3225/2025', use `STARTS WITH` na propriedade `Title` do nó `Solicitacao`. Exemplo: `MATCH (r:RCM)-[:ORIGINADO_DE]->(s:Solicitacao) WHERE s.Title STARTS WITH '3225/2025' RETURN r.texto_completo`.
-4. Para buscar por ID de solicitação (ex: 99797), filtre a propriedade `id` do nó `Solicitacao` com `toFloat()`. Exemplo: `MATCH (s:Solicitacao) WHERE toFloat(s.id) = 99797.0 RETURN s.descricao`.
+2. Quando uma pergunta pedir para listar ou identificar uma 'solicitação', sempre retorne a propriedade `title` do nó `Solicitacao`, que contém o número do chamado (ex: '3225/2025'). Exemplo para 'alesc': `MATCH (s:Solicitacao)-[:ASSOCIADA_A]->(c:Cliente) WHERE toLower(c.nome) = 'alesc' RETURN s.title`.
+3. Se a pergunta usar um número de chamado, como '20511' ou '20511/2024', ele sempre se refere à propriedade `title`. Use o operador `STARTS WITH` para a busca. Para retornar a descrição completa, use a propriedade `texto_completo`. Exemplo para "descrição do chamado 20511": `MATCH (s:Solicitacao) WHERE s.title STARTS WITH '20511' RETURN s.title, s.status, s.texto_completo`.
+4. A propriedade `id` é um identificador interno do sistema. Use-a para busca somente se a pergunta mencionar explicitamente "ID da solicitação". Exemplo para "ID da solicitação 80679": `MATCH (s:Solicitacao) WHERE toFloat(s.id) = 80679.0 RETURN s.description`.
 5. Para buscar por status (ex: 'Aberta', 'RECUSADO'), use `toLower()` na propriedade `status` do nó `Solicitacao`. Exemplo: `MATCH (s:Solicitacao) WHERE toLower(s.status) = 'recusado' RETURN count(s)`.
 6. Para buscar por código de manual (ex: 'UCS0083'), filtre a propriedade `codigo_ucs` no nó `:Manual`. Exemplo: `MATCH (m:Manual) WHERE m.codigo_ucs = 'UCS0083' RETURN m.texto_completo`.
 7. Para buscar por 'Regra de Negócio' ou 'RN' (ex: 'RN001'), combine buscas com `AND`. Exemplo: `MATCH (m:Manual) WHERE m.texto_completo CONTAINS 'RN001' AND m.texto_completo CONTAINS 'Proposta de Consignação' RETURN m.texto_completo`.
 8. Se a pergunta for sobre RCMs de um cliente, primeiro encontre as solicitações do cliente e depois as RCMs relacionadas. Exemplo: `MATCH (r:RCM)-[:ORIGINADO_DE]->(s:Solicitacao)-[:ASSOCIADA_A]->(c:Cliente) WHERE toLower(c.nome) = 'alesc' RETURN r.id`.
+9. **IMPORTANTE para UNION**: Se você precisar combinar resultados de diferentes tipos de nós usando `UNION`, **SEMPRE** use aliases (`AS`) para garantir que os nomes das colunas de retorno sejam idênticos em todas as partes da consulta.
+    Exemplo de `UNION` correto:
+      `MATCH (s:Solicitacao) WHERE s.title CONTAINS 'relatório' RETURN s.title AS titulo, s.texto_completo AS descricao`
+      `UNION`
+      `MATCH (r:RCM) WHERE r.titulo CONTAINS 'relatório' RETURN r.titulo AS titulo, r.id AS descricao`
+10. **Verificação de Status (Human-in-the-Loop):** Ao buscar RCMs, verifique se a label `:NeedsRevision` está presente. Se sim, inclua uma coluna 'status_revisao' com o valor 'EM REVISÃO' no retorno. Exemplo: `MATCH (r:RCM) RETURN r.titulo, CASE WHEN 'NeedsRevision' IN labels(r) THEN 'EM REVISÃO' ELSE 'OK' END AS status_revisao`.
 
 Schema:
 {schema}
 
 Pergunta: {input}
-Consulta Cypher:"""  # noqa: E501
-    )
-    # Cadeia LCEL para geração de Cypher
-    cypher_chain = (
-        {"schema": lambda _: graph.get_schema, "input": RunnablePassthrough()}
-        | cypher_qa_prompt
-        | llm
-        | StrOutputParser()
+
+Responda APENAS com o JSON no formato: {{"cypher": "SUA_CONSULTA_AQUI"}}
+"""  # noqa: E501
     )
 
     def run_qa_chain(question: str) -> str:
+        """Executa a cadeia factual e retorna apenas a resposta."""
         try:
-            generated_cypher = cypher_chain.invoke(question)
-            logging.info(f"Cypher Gerado: {generated_cypher}")  # noqa: G004, LOG015
+            # 1. Construção manual do prompt (bypass API issue)
+            schema = graph.get_schema
+            formatted_prompt = cypher_qa_prompt.format(schema=schema, input=question)
+
+            # 2. Chamada ao LLM
+            llm_response = llm.invoke([HumanMessage(content=formatted_prompt)]).content
+
+            # 3. Limpeza do Markdown (Robustez)
+            if "```json" in llm_response:
+                llm_response = llm_response.split("```json")[1].split("```")[0].strip()
+            elif "```" in llm_response:
+                llm_response = llm_response.split("```")[1].split("```")[0].strip()
+
+            # --- NOVA LÓGICA PARA EXTRAIR CYPHER DO JSON ---
+            # O LLM foi instruído a retornar um JSON {"cypher": "..."}.
+            # Precisamos fazer o parse desse JSON para obter a query real.
+            try:
+                import json
+
+                response_json = json.loads(llm_response)
+                if isinstance(response_json, dict) and "cypher" in response_json:
+                    generated_cypher = response_json["cypher"]
+                else:
+                    # Se não for o JSON esperado, tenta usar a resposta pura como fallback
+                    logging.warning(
+                        "Resposta do LLM não está no formato JSON esperado. Tentando usar como string bruta."
+                    )
+                    generated_cypher = llm_response
+            except json.JSONDecodeError:
+                # Se falhar o parse do JSON, assume que o LLM retornou apenas a string (fallback)
+                logging.warning(
+                    "Falha ao fazer parse do JSON da resposta do LLM. Usando string bruta."
+                )
+                generated_cypher = llm_response
+            # ------------------------------------------------
+
+            if not generated_cypher:
+                return "Erro ao extrair a consulta Cypher."
+
+            # 5. Validação de Segurança Adicional (Hard Check)
+            forbidden_keywords = [
+                "CREATE",
+                "DELETE",
+                "DETACH",
+                "MERGE",
+                "SET",
+                "REMOVE",
+                "DROP",
+                "ALTER",
+            ]
+            upper_cypher = generated_cypher.upper()
+            for keyword in forbidden_keywords:
+                if keyword in upper_cypher:
+                    logging.warning(
+                        f"Consulta Cypher bloqueada por conter '{keyword}': {generated_cypher}"
+                    )
+                    return f"A consulta foi bloqueada por motivos de segurança (operação de escrita '{keyword}' detectada)."
+
+            logging.info(f"Cypher Validado e Seguro: {generated_cypher}")
+
+            # 6. Execução
             result = graph.query(generated_cypher)
-            return json.dumps(result)
+            if not result:
+                return "Nenhum resultado encontrado para esta consulta."
+            return json.dumps(result, ensure_ascii=False)
+
         except Exception as e:
             logging.exception("Falha na execução da consulta Cypher: %s", e)  # noqa: LOG015, TRY401
             return "Desculpe, ocorreu um erro ao buscar a informação no banco de dados."
@@ -139,4 +211,104 @@ Consulta Cypher:"""  # noqa: E501
     Exemplos de entrada: 'Qual o ID da solicitação 3225/2025?', 'Liste as 5 últimas solicitações do cliente Alesc', 'Quantas RCMs existem para o cliente UDESC?'""",  # noqa: E501
     )
 
-    return [semantic_tool, factual_tool]
+    # --- FERRAMENTA 3: AGENTE DE FATURAMENTO ---
+    billing_cypher_prompt = ChatPromptTemplate.from_template(
+        """Você é um expert em Neo4j e finanças. Sua tarefa é gerar uma consulta Cypher para calcular custos de solicitações.
+
+Instruções:
+1.  **Diferencie o tipo de solicitação:** O faturamento de chamados 'Evolutivo' ou 'Melhoria' é baseado em Pontos de Função (`s.effort`). O faturamento dos demais tipos ('Corretivo', 'Operacao', etc.) é baseado em horas (`s.horas_realizadas`).
+2.  **Custo por Ponto de Função:** Para chamados evolutivos, multiplique `s.effort` pelo valor do nó `:Custo {{tipo: 'ponto_funcao'}}`.
+3.  **Custo por Hora:** Para os demais chamados, multiplique `s.horas_realizadas` pelo valor do nó `:Custo {{tipo: 'hora_desenvolvimento'}}`.
+4.  **Exemplo para 'custo do chamado evolutivo 123'**: `MATCH (s:Solicitacao) WHERE s.id = 123 MATCH (c:Custo {{tipo:'ponto_funcao'}}) RETURN s.effort * c.valor AS custo_total`.
+5.  **Exemplo para 'custo do chamado corretivo 456'**: `MATCH (s:Solicitacao) WHERE s.id = 456 MATCH (c:Custo {{tipo:'hora_desenvolvimento'}}) RETURN s.horas_realizadas * c.valor AS custo_total`.
+6.  **Exemplo para 'custo do chamado 3225/2025' (buscando pelo title)**: `MATCH (s:Solicitacao) WHERE s.title = '3225/2025' MATCH (c:Custo) WHERE (s.tipo_solicitacao IN ['Evolutivo', 'Melhoria'] AND c.tipo = 'ponto_funcao') OR (NOT s.tipo_solicitacao IN ['Evolutivo', 'Melhoria'] AND c.tipo = 'hora_desenvolvimento') RETURN s.title AS chamado, CASE WHEN s.tipo_solicitacao IN ['Evolutivo', 'Melhoria'] THEN s.effort * c.valor ELSE s.horas_realizadas * c.valor END AS custo_total`.
+7.  Se a pergunta especificar um cliente, filtre as solicitações por esse cliente antes de somar os custos.
+8.  **Verificação de Inconsistência (Human-in-the-Loop):** Antes de calcular, verifique se a RCM tem a label `:DataInconsistency`. Se sim, retorne 'DADOS INCONSISTENTES' e não calcule o valor. Exemplo: `MATCH (s:Solicitacao) WHERE s.id = 123 RETURN CASE WHEN 'DataInconsistency' IN labels(s) THEN 'DADOS INCONSISTENTES' ELSE s.effort * 100 END AS custo`.
+Schema:
+{schema}
+
+Pergunta: {input}
+
+Responda APENAS com o JSON no formato: {{"cypher": "SUA_CONSULTA_AQUI"}}
+"""  # noqa: E501
+    )
+
+    def run_billing_chain(question: str) -> str:
+        """Executa a cadeia de faturamento e retorna o resultado."""
+        try:
+            # 1. Construção manual do prompt
+            schema = graph.get_schema
+            formatted_prompt = billing_cypher_prompt.format(
+                schema=schema, input=question
+            )
+
+            # 2. Chamada ao LLM
+            llm_response = llm.invoke([HumanMessage(content=formatted_prompt)]).content
+
+            # 3. Limpeza do Markdown
+            if "```json" in llm_response:
+                llm_response = llm_response.split("```json")[1].split("```")[0].strip()
+            elif "```" in llm_response:
+                llm_response = llm_response.split("```")[1].split("```")[0].strip()
+
+            # --- NOVA LÓGICA PARA EXTRAIR CYPHER DO JSON ---
+            try:
+                import json
+
+                response_json = json.loads(llm_response)
+                if isinstance(response_json, dict) and "cypher" in response_json:
+                    generated_cypher = response_json["cypher"]
+                else:
+                    logging.warning(
+                        "Resposta do LLM (Billing) não está no formato JSON esperado. Tentando usar como string bruta."
+                    )
+                    generated_cypher = llm_response
+            except json.JSONDecodeError:
+                logging.warning(
+                    "Falha ao fazer parse do JSON da resposta do LLM (Billing). Usando string bruta."
+                )
+                generated_cypher = llm_response
+            # ------------------------------------------------
+
+            if not generated_cypher:
+                return "Erro ao extrair a consulta Cypher de faturamento."
+
+            # 5. Validação de Segurança Adicional
+            forbidden_keywords = [
+                "CREATE",
+                "DELETE",
+                "DETACH",
+                "MERGE",
+                "SET",
+                "REMOVE",
+                "DROP",
+                "ALTER",
+            ]
+            upper_cypher = generated_cypher.upper()
+            for keyword in forbidden_keywords:
+                if keyword in upper_cypher:
+                    logging.warning(
+                        f"Consulta Cypher de faturamento bloqueada: {generated_cypher}"
+                    )
+                    return "A consulta foi bloqueada por segurança."
+
+            logging.info(f"Cypher de Faturamento Validado: {generated_cypher}")
+
+            # 6. Execução
+            result = graph.query(generated_cypher)
+            if not result:
+                return "Nenhum resultado encontrado para esta consulta."
+            return json.dumps(result, ensure_ascii=False)
+
+        except Exception as e:
+            logging.exception("Falha na execução da consulta de faturamento: %s", e)  # noqa: LOG015, TRY401
+            return "Erro ao calcular o faturamento."
+
+    billing_tool = Tool(
+        name="Billing_Calculator",
+        func=run_billing_chain,
+        description="""Útil para responder perguntas sobre custos, faturamento ou valor de solicitações e projetos.
+    Use esta ferramenta para perguntas como 'Qual o custo do chamado X?', 'Qual o faturamento do cliente Y?'.""",  # noqa: E501
+    )
+
+    return [semantic_tool, factual_tool, billing_tool]

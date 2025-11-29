@@ -1,0 +1,213 @@
+nohup: ignoring input
+INFO:     Will watch for changes in these directories: ['/root/noesys_deploy/RAG_SYSRH']
+INFO:     Uvicorn running on http://0.0.0.0:8080 (Press CTRL+C to quit)
+INFO:     Started reloader process [2528956] using StatReload
+INFO:src.services.quality_service:Guia SISP carregado com sucesso (117104 caracteres).
+INFO:     Started server process [2528959]
+INFO:     Waiting for application startup.
+INFO:src.services.file_watcher:FileWatcherService started monitoring: /root/noesys_deploy/RAG_SYSRH/src/api/../../data
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Adding job tentatively -- it will be properly scheduled when the scheduler starts
+INFO:apscheduler.scheduler:Added job "check_for_stale_issues" to job store "default"
+INFO:apscheduler.scheduler:Added job "ScrumMasterService.plan_next_sprint" to job store "default"
+INFO:apscheduler.scheduler:Added job "ScrumMasterService.monitor_active_sprint_issues" to job store "default"
+INFO:apscheduler.scheduler:Added job "ScrumMasterService.monitor_active_sprint_issues" to job store "default"
+INFO:apscheduler.scheduler:Added job "ScrumMasterService.take_daily_snapshot" to job store "default"
+INFO:apscheduler.scheduler:Scheduler started
+INFO:apscheduler.scheduler:Scheduler started
+INFO:src.services.qa_scheduler_service:QA Scheduler iniciado.
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:apscheduler.scheduler:Added job "QASchedulerService._execute_audit_job" to job store "default"
+INFO:src.services.qa_scheduler_service:Reagendados 119 jobs pendentes (Recuperados de crash: 0).
+INFO:     Application startup complete.
+ERROR:    Traceback (most recent call last):
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/uvicorn/server.py", line 71, in serve
+    await self._serve(sockets)
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/uvicorn/server.py", line 86, in _serve
+    await self.startup(sockets=sockets)
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/uvicorn/server.py", line 136, in startup
+    server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 1597, in create_server
+    server._start_serving()
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 317, in _start_serving
+    sock.listen(self._backlog)
+OSError: [Errno 98] Address already in use
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/starlette/routing.py", line 701, in lifespan
+    await receive()
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/uvicorn/lifespan/on.py", line 137, in receive
+    return await self.receive_queue.get()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/queues.py", line 158, in get
+    await getter
+asyncio.exceptions.CancelledError
+
+Process SpawnProcess-1:
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 314, in _bootstrap
+    self.run()
+  File "/usr/lib/python3.12/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/uvicorn/_subprocess.py", line 80, in subprocess_started
+    target(sockets=sockets)
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/uvicorn/server.py", line 67, in run
+    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 194, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 687, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/uvicorn/server.py", line 71, in serve
+    await self._serve(sockets)
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/uvicorn/server.py", line 86, in _serve
+    await self.startup(sockets=sockets)
+  File "/root/noesys_deploy/RAG_SYSRH/venv/lib/python3.12/site-packages/uvicorn/server.py", line 136, in startup
+    server = await loop.create_server(create_protocol, sock=sock, ssl=config.ssl, backlog=config.backlog)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 1597, in create_server
+    server._start_serving()
+  File "/usr/lib/python3.12/asyncio/base_events.py", line 317, in _start_serving
+    sock.listen(self._backlog)
+OSError: [Errno 98] Address already in use
+🚀 File Watcher iniciado em: /root/noesys_deploy/RAG_SYSRH/src/api/../../data
+🛡️ Quality Monitor & Scrum Master Scheduler iniciado.
+🤖 Autonomous QA Auditor Scheduler iniciado.
+💾 Database tables created/verified.
