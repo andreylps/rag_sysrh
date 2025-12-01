@@ -34,6 +34,7 @@ import {
   Layers,
   ArrowUpRight,
   ArrowDownRight,
+  HardDrive,
 } from "lucide-react";
 import { API_BASE_URL } from "../config";
 import AnalysisTab from "../components/AnalysisTab";
@@ -884,6 +885,8 @@ const Dashboard = () => {
         </div>
       ) : (
         <>
+          {/* WIDGET DE SAÚDE DO SISTEMA */}
+
           {activeTab === "operations" && renderOperationsTab()}
           {activeTab === "billing" && renderBillingTab()}
           {activeTab === "analysis" && (

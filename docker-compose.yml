@@ -38,6 +38,8 @@ services:
       - backend
     networks:
       - noesys_net
+    extra_hosts:
+      - "backend:host-gateway"
 
   simulador:
     build:

@@ -1,3 +1,9 @@
+import os
+
+# Ensure project root is in sys.path
+import sys
+
+# Tenta importar o router
 import traceback  # Importante para debug
 
 import uvicorn
@@ -6,15 +12,20 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# Tenta importar o router
-try:
-    from src.api.v1.router import api_router
-except ImportError:
-    from api.v1.router import api_router
+# Get the directory containing this file (src/api)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Get the project root (parent of src)
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Now we can import from src
+# Strict absolute import
+from src.api.v1.router import api_router
 
 load_dotenv()
 
-import os
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # Adicionado
@@ -125,7 +136,7 @@ async def debug_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={
-            "detail": f"Erro interno no servidor: {str(exc)}. Verifique os logs do terminal."
+            "detail": f"Erro interno no servidor: {exc!s}. Verifique os logs do terminal."
         },
     )
 

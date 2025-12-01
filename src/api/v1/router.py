@@ -15,10 +15,12 @@ from src.api.v1.endpoints import (
     documentation,  # Novo import
     documents,
     knowledge,
+    novo_modulo,  # Adicionado manualmente para corrigir Issue #43
     quality,
     rcm,
     review,
     solicitacoes,
+    system,
     validacao,
     webhook,
     workflow,
@@ -28,6 +30,9 @@ api_router = APIRouter()
 
 # Rotas existentes
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+api_router.include_router(
+    novo_modulo.router, tags=["novo_modulo"]
+)  # Rota do novo módulo
 api_router.include_router(
     solicitacoes.router, prefix="/solicitacoes", tags=["solicitacoes"]
 )
@@ -52,7 +57,10 @@ api_router.include_router(
 api_router.include_router(
     documentation.router, prefix="/documentation", tags=["documentation"]
 )
-api_router.include_router(audit.router, prefix="/audit", tags=["audit"])  # Nova rota
+api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
+api_router.include_router(
+    system.router, prefix="/system", tags=["system"]
+)  # Infra Health Check
 
 from src.api.v1.endpoints import scrum
 
