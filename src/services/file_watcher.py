@@ -1,8 +1,8 @@
 import asyncio
 import logging
-import os
+from pathlib import Path
 
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 # Import the connection manager instance to send broadcasts
@@ -18,28 +18,49 @@ class KnowledgeBaseEventHandler(FileSystemEventHandler):
     Triggers ingestion and notifies users via WebSocket.
     """
 
-    def __init__(self, loop):
+    def __init__(self, loop: asyncio.AbstractEventLoop | None) -> None:
         self.loop = loop
 
-    def _process_event(self, event):
+    def _process_event(self, event: FileSystemEvent) -> None:
         if event.is_directory:
             return
 
-        filename = os.path.basename(event.src_path)
-        if filename.startswith("~") or filename.startswith("."):
+        # Use Path for filename handling
+        file_path = Path(event.src_path)
+        filename = file_path.name
+
+        if filename.startswith(("~", ".")):
             return  # Ignore temp/hidden files
 
         if filename.endswith(".json"):
             return  # Ignore system JSON files (schedules, reports)
 
-        logger.info(f"Detected change in {event.src_path} ({event.event_type})")
+        # Ignore generated directories to prevent loops
+        ignored_dirs = [
+            "reports",
+            "generated_rcm",
+            "generated_docs",
+            "generated_memcalc",
+            "__pycache__",
+            ".git",
+            "venv",
+            "node_modules",
+            "frontend",
+        ]
+        # Check if any ignored dir is part of the path parts
+        # This is more robust than string substring check
+        if any(ignored in file_path.parts for ignored in ignored_dirs):
+            return
+
+        logger.info("Detected change in %s (%s)", event.src_path, event.event_type)
 
         # Notify start of update
         self._notify_ui("[SISTEMA_START]")
 
         try:
             # Run ingestion (this is blocking, so maybe run in executor if heavy)
-            # For now, running directly as it's in a separate thread from the main loop (watchdog thread)
+            # For now, running directly as it's in a separate thread from the main loop
+            # (watchdog thread)
             chunks = ingest_uploaded_file(event.src_path)
 
             if chunks > 0:
@@ -49,36 +70,37 @@ class KnowledgeBaseEventHandler(FileSystemEventHandler):
                 self._notify_ui(f"⚠ Arquivo vazio/ignorado: {filename}")
                 self._notify_ui("[SISTEMA_END]")  # Even if empty, we stop the loading
 
-        except Exception as e:
-            logger.error(f"Error processing file {event.src_path}: {e}")
+        except Exception:
+            logger.exception("Error processing file %s", event.src_path)
             self._notify_ui(f"❌ Erro em '{filename}'")
             self._notify_ui("[SISTEMA_END]")  # Stop loading on error too
 
-    def _notify_ui(self, message: str):
+    def _notify_ui(self, message: str) -> None:
         """
         Sends a message to all connected WebSocket clients.
-        Since this runs in a separate thread, we need to schedule it on the main event loop.
+        Since this runs in a separate thread, we need to schedule it on the main
+        event loop.
         """
         if self.loop and self.loop.is_running():
             asyncio.run_coroutine_threadsafe(
                 manager.broadcast(f"[SISTEMA] {message}"), self.loop
             )
 
-    def on_created(self, event):
+    def on_created(self, event: FileSystemEvent) -> None:
         self._process_event(event)
 
-    def on_modified(self, event):
+    def on_modified(self, event: FileSystemEvent) -> None:
         self._process_event(event)
 
 
 class FileWatcherService:
-    def __init__(self, directory_to_watch: str):
+    def __init__(self, directory_to_watch: str) -> None:
         self.directory = directory_to_watch
         self.observer = Observer()
 
-    def start(self):
-        if not os.path.exists(self.directory):
-            logger.warning(f"Directory to watch does not exist: {self.directory}")
+    def start(self) -> None:
+        if not Path(self.directory).exists():
+            logger.warning("Directory to watch does not exist: %s", self.directory)
             return
 
         # Get the running event loop to schedule async tasks from the thread
@@ -91,9 +113,9 @@ class FileWatcherService:
         event_handler = KnowledgeBaseEventHandler(loop)
         self.observer.schedule(event_handler, self.directory, recursive=True)
         self.observer.start()
-        logger.info(f"FileWatcherService started monitoring: {self.directory}")
+        logger.info("FileWatcherService started monitoring: %s", self.directory)
 
-    def stop(self):
+    def stop(self) -> None:
         self.observer.stop()
         self.observer.join()
         logger.info("FileWatcherService stopped.")

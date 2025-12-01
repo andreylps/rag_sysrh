@@ -47,8 +47,8 @@ def get_system_health() -> dict:
         disk_status = "healthy"
 
     # CPU Usage
-    # interval=0.1 ensures we get a momentary reading without blocking too long
-    cpu_percent = psutil.cpu_percent(interval=0.1)
+    # interval=None returns usage since last call (non-blocking)
+    cpu_percent = psutil.cpu_percent(interval=None)
 
     if cpu_percent > CPU_CRITICAL_THRESHOLD:
         cpu_status = "critical"
