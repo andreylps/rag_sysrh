@@ -10,6 +10,7 @@ Este projeto implementa um assistente de IA conversacional avançado, construíd
 - **Busca Factual (Cypher)**: Gera consultas Cypher dinamicamente para responder a perguntas específicas sobre dados estruturados (IDs, status, contagens, etc.).
 - **Agente Inteligente com Múltiplas Ferramentas**: O agente decide autonomamente qual ferramenta (semântica ou factual) é a mais adequada para responder à pergunta do usuário.
 - **Memória Conversacional**: Mantém o contexto do diálogo, permitindo responder a perguntas de acompanhamento de forma natural.
+- **Monitoramento de Saúde (Novo)**: Endpoint `/api/v1/system/health` e widget no Painel Maestro para monitoramento de uso de disco e status da infraestrutura.
 
 ## 🏗️ Arquitetura do Projeto
 
