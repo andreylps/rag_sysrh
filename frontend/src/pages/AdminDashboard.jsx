@@ -93,27 +93,51 @@ const AdminDashboard = () => {
               <Server className="text-indigo-400" size={20} />
               Saúde da Infraestrutura (VPS)
             </h3>
-            <span
-              className={`px-3 py-1 rounded-full text-xs font-medium border ${
-                systemHealth.disk.status === "healthy"
-                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+            <div className="flex gap-2">
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                  systemHealth.disk.status === "healthy"
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                    : systemHealth.disk.status === "warning"
+                    ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                    : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                }`}
+              >
+                DISK:{" "}
+                {systemHealth.disk.status === "healthy"
+                  ? "OK"
                   : systemHealth.disk.status === "warning"
-                  ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                  : "bg-rose-500/10 text-rose-400 border-rose-500/20"
-              }`}
-            >
-              {systemHealth.disk.status === "healthy"
-                ? "SAUDÁVEL"
-                : systemHealth.disk.status === "warning"
-                ? "ATENÇÃO"
-                : "CRÍTICO"}
-            </span>
+                  ? "WARN"
+                  : "CRIT"}
+              </span>
+              {systemHealth.cpu && (
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                    systemHealth.cpu.status === "healthy"
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                      : systemHealth.cpu.status === "warning"
+                      ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                      : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                  }`}
+                >
+                  CPU:{" "}
+                  {systemHealth.cpu.status === "healthy"
+                    ? "OK"
+                    : systemHealth.cpu.status === "warning"
+                    ? "WARN"
+                    : "CRIT"}
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="space-y-4">
+          <div className="space-y-6">
+            {/* Disk Usage */}
             <div>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-slate-400">Uso de Disco</span>
+                <span className="text-slate-400 flex items-center gap-2">
+                  <Database size={14} /> Uso de Disco
+                </span>
                 <span className="text-slate-200 font-medium">
                   {systemHealth.disk.used_gb} GB / {systemHealth.disk.total_gb}{" "}
                   GB
@@ -139,6 +163,39 @@ const AdminDashboard = () => {
                 </span>
               </div>
             </div>
+
+            {/* CPU Usage */}
+            {systemHealth.cpu && (
+              <div>
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-slate-400 flex items-center gap-2">
+                    <Cpu size={14} /> Uso de CPU
+                  </span>
+                  <span className="text-slate-200 font-medium">
+                    {systemHealth.cpu.percent_used}%
+                  </span>
+                </div>
+                <div className="w-full bg-slate-700 rounded-full h-4 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-1000 ${
+                      systemHealth.cpu.status === "healthy"
+                        ? "bg-blue-500"
+                        : systemHealth.cpu.status === "warning"
+                        ? "bg-amber-500"
+                        : "bg-rose-500"
+                    }`}
+                    style={{
+                      width: `${Math.min(systemHealth.cpu.percent_used, 100)}%`,
+                    }}
+                  ></div>
+                </div>
+                <div className="flex justify-end mt-1">
+                  <span className="text-xs text-slate-500">
+                    {systemHealth.cpu.percent_used}% utilizado
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       ) : (
