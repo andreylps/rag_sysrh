@@ -1,8 +1,7 @@
 import logging
 import re
-from typing import List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from src.services.file_system_service import read_file_content
 from src.services.github_service import (  # Adicionado
@@ -64,7 +63,7 @@ async def get_review_files(issue_number: int):
                 files_data.append(
                     {
                         "path": path,
-                        "content": f"Erro ao ler arquivo: {str(e)}",
+                        "content": f"Erro ao ler arquivo: {e!s}",
                         "status": "error",
                     }
                 )
@@ -76,11 +75,11 @@ async def get_review_files(issue_number: int):
     except Exception as e:
         logger.error(f"Erro ao buscar arquivos para revisão: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Erro interno ao processar revisão: {str(e)}"
+            status_code=500, detail=f"Erro interno ao processar revisão: {e!s}"
         )
 
 
-@router.get("/backlog", response_model=List[dict])
+@router.get("/backlog", response_model=list[dict])
 async def get_review_backlog():
     """
     Retorna a lista de issues que estão aguardando revisão técnica.
@@ -91,7 +90,7 @@ async def get_review_backlog():
     return issues
 
 
-@router.get("/history", response_model=List[dict])
+@router.get("/history", response_model=list[dict])
 async def get_review_history():
     """
     Retorna o histórico de issues revisadas (fechadas).
@@ -131,51 +130,59 @@ async def get_review_history():
         logger.error(f"Erro ao buscar histórico de revisão: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Falha ao buscar histórico: {str(e)}",
+            detail=f"Falha ao buscar histórico: {e!s}",
         )
 
 
 @router.post("/{issue_number}/deploy", status_code=200)
-async def deploy_issue(issue_number: int):
+async def deploy_issue(
+    issue_number: int,
+    background_tasks: BackgroundTasks,  # Adicionado BackgroundTasks
+):
     """
-    Finaliza o ciclo de desenvolvimento:
-    1. Posta comentário de deploy.
-    2. Remove label de revisão.
-    3. Fecha a issue.
+    Aprova a revisão técnica e dispara a Fase 2 do Agente Dev (Execução/Doc/QA).
     """
     try:
+        # Importação tardia para evitar ciclo
+        from src.agents.dev_agent import run_dev_agent_execution
         from src.services.github_service import (
+            get_issue_details,
             post_comment,
-            update_issue_labels,
         )
 
-        logger.info(f"Iniciando deploy para issue #{issue_number}...")
+        logger.info(
+            f"Aprovação técnica recebida para issue #{issue_number}. Disparando Fase 2."
+        )
 
-        # 1. Postar comentário final
+        # 1. Postar comentário de aprovação
         await post_comment(
             issue_number=issue_number,
-            body="🚀 **Deploy Realizado com Sucesso!**\n\nAs alterações foram revisadas tecnicamente e implantadas em produção.",
+            body="✅ **Revisão Técnica Aprovada**\n\nO código foi validado pelo revisor humano. Iniciando geração de documentação e QA automatizado...",
         )
 
-        # 2. Atualizar Labels
-        await update_issue_labels(
-            issue_number=issue_number,
-            remove_labels=["status:aguardando-review-tecnico"],
-            add_labels=["status:aceite-homologacao"],
-        )
+        # 2. Buscar detalhes da issue para passar ao agente
+        issue_details = await get_issue_details(issue_number)
+        issue_data = {
+            "number": issue_number,
+            "title": issue_details["title"],
+            "body": issue_details["body"],
+        }
 
-        # 3. Fechar a Issue (REMOVIDO: Issue deve permanecer aberta para homologação)
-        # await close_issue(issue_number=issue_number)
+        # 3. Disparar Agente Dev - Fase 2 (Background)
+        logger.info(f"Disparando Fase 2 com issue_data: {issue_data}")
+        background_tasks.add_task(
+            run_dev_agent_execution, issue_number=issue_number, issue_data=issue_data
+        )
 
         return {
             "status": "success",
-            "message": "Issue atualizada para aceite de homologação.",
+            "message": "Revisão aprovada. Fase 2 (Doc/QA) iniciada em background.",
         }
 
     except Exception as e:
-        logger.error(f"Erro ao realizar deploy da issue #{issue_number}: {e}")
+        logger.error(f"Erro ao processar aprovação da issue #{issue_number}: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Erro ao realizar deploy: {str(e)}"
+            status_code=500, detail=f"Erro ao processar aprovação: {e!s}"
         )
 
 
@@ -219,6 +226,77 @@ async def homologate_issue(issue_number: int):
 
     except Exception as e:
         logger.error(f"Erro ao homologar issue #{issue_number}: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao homologar issue: {e!s}")
+
+
+@router.get("/{issue_number}/details", status_code=200)
+async def get_issue_details_endpoint(issue_number: int):
+    """
+    Retorna os detalhes completos da issue, incluindo comentários.
+    Útil para exibir o feedback da QA na interface de revisão.
+    """
+    try:
+        from src.services.github_service import get_issue_details
+
+        details = await get_issue_details(issue_number)
+        return details
+    except Exception as e:
+        logger.error(f"Erro ao buscar detalhes da issue #{issue_number}: {e}")
         raise HTTPException(
-            status_code=500, detail=f"Erro ao homologar issue: {str(e)}"
+            status_code=500, detail=f"Erro ao buscar detalhes da issue: {e!s}"
         )
+
+
+@router.post("/{issue_number}/bypass-qa", status_code=200)
+async def bypass_qa_check(issue_number: int):
+    """
+    Permite ao revisor técnico aprovar uma demanda mesmo com bloqueio de QA (Bypass).
+    Move a issue de 'status:aguardando-correcao-doc' para 'status:aceite-homologacao'.
+    """
+    try:
+        from src.services.github_service import (
+            get_issue_details,
+            post_comment,
+            update_issue_labels,
+        )
+
+        # 1. Verificar se a issue está no estado correto para bypass
+        details = await get_issue_details(issue_number)
+        labels = details.get("labels", [])
+
+        if "status:aguardando-correcao-doc" not in labels:
+            raise HTTPException(
+                status_code=400,
+                detail="Apenas issues bloqueadas pela QA (aguardando-correcao-doc) podem sofrer bypass.",
+            )
+
+        logger.info(f"Iniciando QA Bypass Manual para issue #{issue_number}...")
+
+        # 2. Postar comentário de auditoria
+        await post_comment(
+            issue_number=issue_number,
+            body=(
+                "⚠️ **QA Bypass Manual Realizado**\n\n"
+                "O Revisor Técnico optou por aprovar esta demanda manualmente, "
+                "ignorando o bloqueio da Auditoria de Qualidade.\n\n"
+                "**Ação:** Movendo para Homologação."
+            ),
+        )
+
+        # 3. Atualizar Labels
+        await update_issue_labels(
+            issue_number=issue_number,
+            remove_labels=["status:aguardando-correcao-doc"],
+            add_labels=["status:aceite-homologacao"],
+        )
+
+        return {
+            "status": "success",
+            "message": "Bypass realizado com sucesso. Issue movida para Homologação.",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao realizar bypass na issue #{issue_number}: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao realizar bypass: {e!s}")
