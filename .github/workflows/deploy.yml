@@ -46,3 +46,4 @@ jobs:
 
             echo "✅ Deploy concluído com sucesso!"
           EOF
+# Trigger update
