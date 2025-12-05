@@ -469,5 +469,134 @@ class ScrumMasterService:
             return None
 
 
+    async def calculate_advanced_metrics(self, sprint_id: str = None) -> dict:
+        """
+        Calcula métricas avançadas para o Dashboard da Sala Scrum.
+        Se sprint_id for fornecido, calcula para aquela sprint.
+        Caso contrário, calcula para a sprint atual/ativa.
+        """
+        logger.info(f"Calculando métricas avançadas (Sprint: {sprint_id or 'Atual'})...")
+        
+        # 1. Obter issues relevantes
+        if sprint_id:
+            # TODO: Implementar busca por histórico de sprint específica
+            # Por enquanto, vamos focar na atual
+            issues = await list_issues_by_label("sprint:atual")
+        else:
+            issues = await list_issues_by_label("sprint:atual")
+
+        # Métricas de Fluxo
+        lead_times = []
+        cycle_times = []
+        wip_count = 0
+        aging_wip_sum = 0
+        
+        # Métricas de Qualidade
+        bugs_count = 0
+        rework_count = 0
+        
+        # Métricas de Saúde
+        blockers_count = 0
+        
+        # Métricas de Previsibilidade
+        unplanned_count = 0
+        
+        now = datetime.now()
+
+        for issue in issues:
+            issue_number = issue["number"]
+            labels = issue.get("labels", [])
+            created_at = datetime.fromisoformat(issue["created_at"].replace("Z", "+00:00"))
+            
+            # --- FLUXO ---
+            # WIP
+            if issue.get("state") == "open":
+                wip_count += 1
+                # Aging WIP (horas)
+                age = (now.astimezone(created_at.tzinfo) - created_at).total_seconds() / 3600
+                aging_wip_sum += age
+
+            # Lead Time (apenas para fechadas)
+            if issue.get("state") == "closed" and issue.get("closed_at"):
+                closed_at = datetime.fromisoformat(issue["closed_at"].replace("Z", "+00:00"))
+                lead_time = (closed_at - created_at).total_seconds() / 3600 / 24 # Dias
+                lead_times.append(lead_time)
+                
+                # Cycle Time (Start -> Close)
+                # Precisamos buscar eventos para saber quando começou
+                events = await get_issue_events(issue_number)
+                start_time = None
+                for event in events:
+                    # Consideramos 'start' quando ganha label de 'sprint:atual' ou sai de 'aguardando-liberacao-dev'
+                    if event["event"] == "labeled" and event["label"] == "sprint:atual":
+                        start_time = datetime.fromisoformat(event["created_at"].replace("Z", "+00:00"))
+                        break
+                
+                if start_time:
+                    cycle_time = (closed_at - start_time).total_seconds() / 3600 / 24 # Dias
+                    cycle_times.append(cycle_time)
+
+            # --- QUALIDADE ---
+            # Bugs
+            if "Corretiva" in issue.get("title", "") or "bug" in labels or "tipo:corretiva" in labels:
+                bugs_count += 1
+            
+            # Retrabalho (Loop QA)
+            # Verifica se teve label de correção de doc
+            events = await get_issue_events(issue_number)
+            rework_events = [e for e in events if e["event"] == "labeled" and e["label"] == "status:aguardando-correcao-doc"]
+            if rework_events:
+                rework_count += 1
+
+            # --- SAÚDE ---
+            # Bloqueios
+            if any("bloqueado" in l for l in labels):
+                blockers_count += 1
+
+            # --- PREVISIBILIDADE ---
+            # Não planejadas (Firefighters)
+            # Se foi criada DEPOIS do início da sprint (mock start date)
+            # TODO: Usar data real de início da sprint
+            sprint_start_mock = now - timedelta(days=5) # Exemplo
+            if created_at > sprint_start_mock.astimezone(created_at.tzinfo):
+                unplanned_count += 1
+
+        # Cálculos Finais
+        avg_lead_time = sum(lead_times) / len(lead_times) if lead_times else 0
+        avg_cycle_time = sum(cycle_times) / len(cycle_times) if cycle_times else 0
+        avg_aging_wip = aging_wip_sum / wip_count if wip_count > 0 else 0
+        
+        # Mock Throughput (issues fechadas nos últimos 14 dias)
+        # Idealmente buscaria no repo todo, mas vamos usar o count da sprint atual fechada
+        throughput = len(lead_times) 
+
+        return {
+            "flow": {
+                "lead_time_avg_days": round(avg_lead_time, 1),
+                "cycle_time_avg_days": round(avg_cycle_time, 1),
+                "wip": wip_count,
+                "throughput_sprint": throughput,
+                "aging_wip_avg_hours": round(avg_aging_wip, 1)
+            },
+            "quality": {
+                "bugs_count": bugs_count,
+                "rework_count": rework_count,
+                "rework_rate": round((rework_count / len(issues) * 100), 1) if issues else 0
+            },
+            "health": {
+                "blockers_count": blockers_count,
+                "team_morale": 4.5, # Mock
+                "turnover_rate": 0.0 # Mock
+            },
+            "predictability": {
+                "unplanned_items": unplanned_count,
+                "sprint_accuracy": 0.0 # Precisa de planned vs delivered real
+            },
+            "maturity": {
+                "adherence_score": 8.5, # Mock
+                "backlog_health": "Healthy" # Mock
+            }
+        }
+
 # Instância global
 scrum_master_service = ScrumMasterService()

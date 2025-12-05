@@ -76,7 +76,7 @@ Prioridade Sugerida pelo Usuário: {prioridade_sugerida}
 {descricao}
 """
         # Executa a análise com o prompt enriquecido
-        resultado = await agente.arun(contexto_extra)
+        resultado = await agente.arun(contexto_extra, solicitacao_id=issue_id)
 
         # Formata o comentário em Markdown
         comentario = "## 🤖 Análise Automática de Requisitos\n\n"
@@ -105,12 +105,24 @@ Prioridade Sugerida pelo Usuário: {prioridade_sugerida}
             comentario += "⚠️ **Aviso:** A análise retornou vazia ou inconclusiva."
 
         # --- 4. ATUALIZAÇÃO DE LABELS ---
-        # Adiciona a label 'status:aguardando-validacao' para que a issue apareça no backlog
-        from src.services.github_service import update_issue_labels
-
-        await update_issue_labels(
-            issue_number=issue_id, add_labels=["status:aguardando-validacao"]
-        )
+        # Lógica de Bifurcação de Fluxo:
+        # 1. Evolutiva/Melhoria -> Fluxo Lento (RCM) -> 'status:aguardando-validacao-rcm' (Já adicionado pelo workflow)
+        # 2. Outros (Corretiva, Operação, Dúvida) -> Fluxo Rápido (Fast Track) -> 'status:aguardando-liberacao-dev'
+        
+        label_to_add = "status:aguardando-liberacao-dev" # Default Fast Track
+        
+        if resultado and resultado.tipo_solicitacao:
+             tipo_lower = resultado.tipo_solicitacao.lower()
+             if "evoluti" in tipo_lower or "melhoria" in tipo_lower:
+                 # Se for evolutiva, o workflow já cuidou da label de RCM.
+                 # Não adicionamos nada aqui para evitar conflito.
+                 label_to_add = None
+        
+        if label_to_add:
+            from src.services.github_service import update_issue_labels
+            await update_issue_labels(
+                issue_number=issue_id, add_labels=[label_to_add]
+            )
 
         # Posta o comentário no GitHub
         await post_comment(issue_id, comentario)

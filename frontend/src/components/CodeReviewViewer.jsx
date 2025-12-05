@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Editor from "@monaco-editor/react";
 import { FileCode, AlertCircle } from "lucide-react";
+import { API_BASE_URL } from "../config";
 
 const CodeReviewViewer = ({ issueId }) => {
   const [files, setFiles] = useState([]);
@@ -13,9 +14,7 @@ const CodeReviewViewer = ({ issueId }) => {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch(
-          `http://localhost:8080/api/v1/review/${issueId}/files`
-        );
+        const response = await fetch(`${API_BASE_URL}/review/${issueId}/files`);
 
         if (!response.ok) {
           if (response.status === 404) {
@@ -113,7 +112,7 @@ const CodeReviewViewer = ({ issueId }) => {
             Arquivos ({files.length})
           </h3>
         </div>
-        <div className="flex-grow overflow-y-auto">
+        <div className="grow overflow-y-auto">
           <ul className="divide-y divide-slate-700/50">
             {files.map((file) => (
               <li key={file.path}>
@@ -125,7 +124,7 @@ const CodeReviewViewer = ({ issueId }) => {
                       : "text-slate-400 hover:bg-slate-700/50 hover:text-slate-200"
                   }`}
                 >
-                  <FileCode size={16} className="mr-2 flex-shrink-0" />
+                  <FileCode size={16} className="mr-2 shrink-0" />
                   <span className="truncate" title={file.path}>
                     {file.path}
                   </span>
@@ -150,7 +149,7 @@ const CodeReviewViewer = ({ issueId }) => {
                   : "Erro de Leitura"}
               </span>
             </div>
-            <div className="flex-grow relative">
+            <div className="grow relative">
               {selectedFile.status === "ok" ? (
                 <Editor
                   height="100%"
@@ -174,7 +173,7 @@ const CodeReviewViewer = ({ issueId }) => {
             </div>
           </>
         ) : (
-          <div className="flex-grow flex items-center justify-center text-slate-500">
+          <div className="grow flex items-center justify-center text-slate-500">
             <p>Selecione um arquivo para visualizar o código.</p>
           </div>
         )}

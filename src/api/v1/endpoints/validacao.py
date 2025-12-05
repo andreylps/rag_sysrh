@@ -3,7 +3,7 @@
 import logging
 from typing import List
 
-from fastapi import APIRouter, Body, HTTPException, Path, status
+from fastapi import APIRouter, BackgroundTasks, Body, HTTPException, Path, status
 
 from src.schemas.validation import ValidatedDataDTO
 
@@ -116,6 +116,7 @@ async def get_issue(
 
 @router.post("/{issue_number}/approve", status_code=status.HTTP_200_OK)
 async def approve_validation(
+    background_tasks: BackgroundTasks,
     issue_number: int = Path(..., description="Número da issue no GitHub", ge=1),
     validated_data: ValidatedDataDTO = Body(
         ..., description="Dados validados pelo analista"
@@ -126,6 +127,7 @@ async def approve_validation(
     1. Recebe os dados corrigidos pelo analista.
     2. Atualiza a issue no GitHub (remove label antiga, adiciona nova, posta comentário).
     3. Salva a 'verdade' no Neo4j.
+    4. Dispara o Agente Dev (Fábrica) se for o caso.
     """
     logger.info(f"Iniciando aprovação da issue #{issue_number} pelo analista.")
 
@@ -134,10 +136,12 @@ async def approve_validation(
         issue_details = await get_issue_details(issue_number)
 
         # 2. Atualizar o GitHub
+        # Adiciona 'status:pronto-para-dev' para sinalizar que está pronto para a fábrica
+        # Mantém 'status:aceite-homologacao' como registro de que passou pela validação humana
         await update_issue_labels(
             issue_number=issue_number,
-            add_labels=[LABEL_VALIDADO],
-            remove_labels=[LABEL_AGUARDANDO_VALIDACAO],
+            add_labels=[LABEL_VALIDADO, "status:pronto-para-dev"],
+            remove_labels=[LABEL_AGUARDANDO_VALIDACAO, "status:aguardando-liberacao-dev"],
         )
 
         # Monta o corpo do comentário final
@@ -157,6 +161,8 @@ Esta demanda foi revisada e aprovada por um analista.
 
 **Observações do Analista:**
 {validated_data.comentarios_validacao if validated_data.comentarios_validacao else "Sem observações adicionais."}
+
+🚀 **Disparando Agente de Desenvolvimento...**
 """
         await post_comment(issue_number, comment_body)
 
@@ -174,9 +180,20 @@ Esta demanda foi revisada e aprovada por um analista.
         )
         logger.info(f"Dados da Demanda #{issue_number} salvos no Neo4j.")
 
+        # 4. Disparar Agente Dev (Background)
+        # Importação tardia para evitar ciclo se houver
+        from src.agents.dev_agent import run_dev_agent
+        
+        logger.info(f"Agendando execução do Agente Dev para issue #{issue_number}")
+        background_tasks.add_task(
+            run_dev_agent, 
+            issue_number=issue_number, 
+            issue_data={"title": issue_details["title"], "body": issue_details["body"]}
+        )
+
         return {
             "status": "success",
-            "message": f"Validação da issue #{issue_number} aprovada com sucesso.",
+            "message": f"Validação da issue #{issue_number} aprovada. Fábrica iniciada.",
             "issue_number": issue_number,
         }
 

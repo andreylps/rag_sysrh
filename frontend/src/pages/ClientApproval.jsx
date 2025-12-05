@@ -15,6 +15,7 @@ import {
   DollarSign,
   ArrowLeft,
 } from "lucide-react";
+import { API_BASE_URL } from "../config";
 
 const ClientApproval = () => {
   const { issue_number } = useParams();
@@ -33,7 +34,7 @@ const ClientApproval = () => {
       setLoading(true);
       try {
         const response = await fetch(
-          `http://localhost:8080/api/v1/rcm/${issue_number}/details`
+          `${API_BASE_URL}/rcm/${issue_number}/details`
         );
 
         if (!response.ok) {
@@ -67,7 +68,7 @@ const ClientApproval = () => {
       };
 
       const response = await fetch(
-        `http://localhost:8080/api/v1/rcm/${issue_number}/client-action`,
+        `${API_BASE_URL}/rcm/${issue_number}/client-action`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -98,7 +99,7 @@ const ClientApproval = () => {
   const handleDownload = async () => {
     try {
       const response = await fetch(
-        `http://localhost:8080/api/v1/rcm/${issue_number}/download`
+        `${API_BASE_URL}/rcm/${issue_number}/download`
       );
       if (!response.ok) throw new Error("Erro ao baixar arquivo.");
 

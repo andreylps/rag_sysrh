@@ -19,6 +19,7 @@ import {
   PrinterIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
+import { API_BASE_URL } from "../config";
 
 const ScrumControlRoom = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -32,9 +33,9 @@ const ScrumControlRoom = () => {
     const fetchData = async () => {
       try {
         const [sprintRes, burndownRes, reportsRes] = await Promise.all([
-          axios.get("http://localhost:8080/api/v1/scrum/current-sprint"),
-          axios.get("http://localhost:8080/api/v1/scrum/burndown-data"),
-          axios.get("http://localhost:8080/api/v1/scrum/reports"),
+          axios.get(`${API_BASE_URL}/scrum/current-sprint`),
+          axios.get(`${API_BASE_URL}/scrum/burndown-data`),
+          axios.get(`${API_BASE_URL}/scrum/reports`),
         ]);
         setSprintData(sprintRes.data);
         setBurndownData(burndownRes.data);
@@ -498,7 +499,7 @@ const ScrumControlRoom = () => {
                 : "text-gray-400 hover:text-white"
             }`}
           >
-            Relatórios
+            Relatórios de Ciclo
           </button>
         </div>
       </header>

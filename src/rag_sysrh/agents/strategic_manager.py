@@ -1,11 +1,11 @@
-from typing import Any, Dict
+from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
-from rag_sysrh.core.knowledge_base import get_contexto_organizacional_completo
-from rag_sysrh.services.strategic_data_service import StrategicDataService
+from src.rag_sysrh.core.knowledge_base import get_contexto_organizacional_completo
+from src.rag_sysrh.services.strategic_data_service import StrategicDataService
 
 
 class AnaliseEstrategica(BaseModel):
@@ -29,13 +29,13 @@ class StrategicManagerAgent:
     Orquestra a análise de dados e geração de insights.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.data_service = StrategicDataService()
         self.llm = ChatOpenAI(
             model="gpt-4o", temperature=0.2
         )  # Baixa temperatura para análise sóbria
 
-    def run_analysis(self, period: str, team: str, client: str) -> Dict[str, Any]:
+    def run_analysis(self, period: str, team: str, client: str) -> dict[str, Any]:
         """
         Executa o ciclo completo de análise: Scan -> LLM -> Resultado.
         """
@@ -56,15 +56,15 @@ class StrategicManagerAgent:
         - Entregues: {scan_data["kpis"]["entregues"]}
         - Taxa de Entrega: {scan_data["kpis"]["taxa_entrega"]}%
         - Lead Time Médio: {scan_data["kpis"]["lead_time_medio"]} dias
-        
+
         Filtros Aplicados: Time={team}, Cliente={client}
-        
+
         Análise de Gargalos (Tempo por etapa):
         {bottlenecks}
-        
+
         Principais Motivos de Recusa/Atrito:
         {rejections}
-        
+
         Dados Financeiros (Estimado):
         {financials}
         """
@@ -84,7 +84,7 @@ class StrategicManagerAgent:
         }
 
     def run_strategic_analysis(
-        self, context_data: Dict[str, Any]
+        self, context_data: dict[str, Any]
     ) -> AnaliseEstrategica:
         """
         Gera a narrativa estratégica a partir de dados estruturados.
@@ -93,18 +93,19 @@ class StrategicManagerAgent:
         context_str = f"""
         KPIs Globais (Período: {context_data.get("period", "N/A")}):
         {context_data.get("kpis", {})}
-        
-        Filtros: Time={context_data.get("team", "N/A")}, Cliente={context_data.get("client", "N/A")}
-        
+
+        Filtros: Time={context_data.get("team", "N/A")},
+        Cliente={context_data.get("client", "N/A")}
+
         Tendência (Lead Time):
         {context_data.get("trend", [])}
-        
+
         Gargalos:
         {context_data.get("bottlenecks", [])}
-        
+
         Motivos de Recusa:
         {context_data.get("rejections", [])}
-        
+
         Financeiro:
         {context_data.get("financials", {})}
         """
@@ -116,17 +117,22 @@ class StrategicManagerAgent:
                 (
                     "system",
                     f"""Você é o Head de Estratégia Operacional do SYSRH.
-            Sua função é analisar os dados operacionais e gerar insights de negócio críticos.
-            
+            Sua função é analisar os dados operacionais e gerar insights
+            de negócio críticos.
+
             {contexto_org}
-            
+
             Diretrizes:
             1. Seja direto e executivo. Foque em impacto financeiro e de prazo.
-            2. Identifique anomalias. Se a taxa de entrega for baixa (<50%) ou Lead Time alto, isso é um problema.
-            3. Conecte os pontos: Gargalo em 'Validação' + Recusa por 'Especificação' = Problema de Requisitos.
-            4. Regra Crítica: Cliente ALESC tem prioridade máxima. Bugs são tratados como evolutivas.
-            
-            Gere uma análise estruturada contendo: Alerta, Evidência, Predição e Plano de Ação.
+            2. Identifique anomalias. Se a taxa de entrega for baixa (<50%)
+            ou Lead Time alto, isso é um problema.
+            3. Conecte os pontos: Gargalo em 'Validação' + Recusa por
+            'Especificação' = Problema de Requisitos.
+            4. Regra Crítica: Cliente ALESC tem prioridade máxima. Bugs são
+            tratados como evolutivas.
+
+            Gere uma análise estruturada contendo: Alerta, Evidência,
+            Predição e Plano de Ação.
             """,
                 ),
                 ("user", "Analise os seguintes dados operacionais:\n{context}"),

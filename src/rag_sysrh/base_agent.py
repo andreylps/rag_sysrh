@@ -18,7 +18,7 @@ class BaseAgent:
             self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
             logging.info("Using Gemini (Google) as LLM provider.")
         else:
-            self.llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
+            self.llm = ChatOpenAI(model="gpt-4o", temperature=0)
             logging.info("Using OpenAI as LLM provider.")
 
         self._connect_to_neo4j()
@@ -38,7 +38,7 @@ class BaseAgent:
             self.graph.query("RETURN 1")
             logging.info(f"Neo4j connection successful for {self.__class__.__name__}.")
         except Exception as e:
-            logging.error(
+            logging.exception(
                 f"Failed to connect to Neo4j for {self.__class__.__name__}: {e}"
             )
             raise
@@ -52,7 +52,7 @@ class BaseAgent:
             )
             logging.info("Switched to Gemini (Google) LLM.")
         elif provider == "openai":
-            self.llm = ChatOpenAI(model="gpt-4-turbo", temperature=0)
+            self.llm = ChatOpenAI(model="gpt-4o", temperature=0)
             logging.info("Switched to OpenAI LLM.")
         else:
             logging.warning(f"Unknown provider {provider}, keeping current LLM.")

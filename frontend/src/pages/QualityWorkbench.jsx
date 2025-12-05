@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { AlertCircle } from "lucide-react";
+import { API_BASE_URL } from "../config";
 
 const QualityWorkbench = () => {
   const [alerts, setAlerts] = useState([]);
@@ -13,7 +14,7 @@ const QualityWorkbench = () => {
     setLoadingAlerts(true);
     try {
       const response = await fetch(
-        "http://localhost:8080/api/v1/quality/alerts"
+        `${API_BASE_URL}/quality/alerts`
       );
       if (response.ok) {
         const data = await response.json();

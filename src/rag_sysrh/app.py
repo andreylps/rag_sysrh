@@ -1,3 +1,316 @@
+<<<<<<< HEAD
+import os
+import re
+from datetime import datetime
+
+import plotly.express as px
+import streamlit as st
+from dotenv import load_dotenv
+
+from rag_sysrh.analista_workflow import (
+    analista_app,
+    get_all_clients,
+    get_avg_completion_time,
+    get_complexity_distribution,
+    get_dashboard_analysis,
+    get_solicitacao_texto_by_id,
+    get_status_distribution,
+    get_tickets_by_assignee,
+    get_tickets_by_team,
+    setup_conversational_agent,
+)
+
+# --- CONFIGURAÇÃO DA PÁGINA E VARIÁVEIS DE AMBIENTE ---
+
+# Carrega as variáveis de ambiente do arquivo .env
+load_dotenv()
+
+# Configura a página do Streamlit com um título e layout
+st.set_page_config(page_title="Assistente SYSRH", layout="wide")
+
+st.title("🤖 Assistente de Conhecimento SYSRH")
+st.caption("Sua ferramenta de IA para análise e consulta de dados do SYSRH.")
+
+# --- MENU LATERAL (SIDEBAR) ---
+
+with st.sidebar:
+    st.header("Modo de Operação")
+    modo = st.radio(
+        "Selecione o que deseja fazer:",
+        ("Consulta Conversacional", "Análise de Solicitação", "Dashboard de Gestão"),
+        label_visibility="collapsed",
+    )
+    st.markdown("---")
+    # Atualiza a info para incluir o novo modo
+    st.info(
+        "**Consulta Conversacional**: Converse com a IA para fazer perguntas sobre manuais, RCMs e solicitações.\n\n"  # noqa: E501
+        "**Análise de Solicitação**: Forneça o **Número** de uma solicitação para que a IA realize uma análise completa de classificação e estimativa."  # noqa: E501
+    )
+
+# --- MODO 1: CONSULTA CONVERSACIONAL ---
+
+if modo == "Consulta Conversacional":
+    st.header("💬 Consulta Conversacional")
+
+    # Inicializa o agente na sessão se ainda não existir
+    if "agent_executor" not in st.session_state:
+        with st.spinner("Preparando o assistente de consulta..."):
+            st.session_state.agent_executor = setup_conversational_agent()
+
+    # Inicializa o histórico do chat
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Exibe as mensagens do histórico
+    for message in st.session_state.messages:
+        avatar = "👤" if message["role"] == "user" else "🤖"
+        with st.chat_message(message["role"], avatar=avatar):
+            st.markdown(message["content"])
+
+    # Captura a pergunta do usuário
+    if prompt := st.chat_input("Faça sua pergunta sobre o SYSRH..."):
+        # Adiciona e exibe a mensagem do usuário
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(prompt)
+
+        # Gera e exibe a resposta do assistente
+        with st.chat_message("assistant", avatar="🤖"):  # noqa: SIM117
+            with st.spinner("Analisando sua pergunta..."):
+                try:
+                    response = st.session_state.agent_executor.invoke({"input": prompt})
+                    # Garante que a chave 'output' exista antes de acessá-la
+                    output = response.get(
+                        "output", "Desculpe, não consegui encontrar uma resposta."
+                    )
+                    st.markdown(output)
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Ocorreu um erro ao processar sua solicitação: {e}")
+                    response = {
+                        "output": "Ocorreu um erro."
+                    }  # Define uma resposta padrão
+        # Adiciona a resposta do assistente ao histórico
+        st.session_state.messages.append(
+            {"role": "assistant", "content": response["output"]}
+        )
+
+
+# --- MODO 2: ANÁLISE DE SOLICITAÇÃO ---
+
+if modo == "Análise de Solicitação":
+    st.header("⚙️ Análise Automatizada de Solicitação")
+
+    solicitacao_id = st.text_input(
+        "Informe o ID ou o número da solicitação (ex: 24326 ou 3225/2025):",
+        key="solicitacao_input",
+    )
+
+    if st.button("Analisar Solicitação", type="primary"):
+        if not solicitacao_id:
+            st.warning("Por favor, informe o ID da solicitação.")
+        else:
+            with st.spinner(
+                f"Buscando e analisando a solicitação '{solicitacao_id}'..."
+            ):
+                # 1. Busca o texto da solicitação no banco de dados
+                texto_da_solicitacao = get_solicitacao_texto_by_id(solicitacao_id)
+
+                if not texto_da_solicitacao:
+                    st.error(
+                        f"ERRO: Solicitação com ID '{solicitacao_id}' não encontrada no banco de dados."  # noqa: E501
+                    )
+                else:
+                    st.info(
+                        "Solicitação encontrada! Iniciando análise pelo workflow..."
+                    )
+
+                    # 2. Invoca o workflow de análise (LangGraph)
+                    resultado_final = analista_app.invoke(
+                        {"solicitacao_texto": texto_da_solicitacao}
+                    )
+
+                    resposta_formatada = resultado_final.get("resposta_final")
+
+                    if resposta_formatada:
+                        # 3. Salva o resultado em um arquivo
+                        output_dir = "data/resultado_analise"
+                        os.makedirs(output_dir, exist_ok=True)  # noqa: PTH103
+
+                        # Tenta extrair o número da solicitação para o nome do arquivo
+                        match = re.search(r"(\d+)", solicitacao_id)
+                        numero_solicitacao = (
+                            match.group(1).replace("/", "-")
+                            if match
+                            else "desconhecida"
+                        )
+                        filename = f"analise_{numero_solicitacao}_{datetime.now().strftime('%Y%m%d')}.md"  # noqa: DTZ005, E501
+                        full_path = os.path.join(output_dir, filename)  # noqa: PTH118
+
+                        with open(full_path, "w", encoding="utf-8") as f:  # noqa: PTH123
+                            f.write(resposta_formatada)
+
+                        st.success(f"Análise concluída e salva em `{full_path}`")
+
+                        # 4. Exibe o resultado na tela
+                        st.markdown("---")
+                        st.markdown(resposta_formatada)
+                    else:
+                        st.error(
+                            "Ocorreu um erro e o workflow de análise não produziu uma resposta final."  # noqa: E501
+                        )
+
+# --- MODO 3: DASHBOARD DE GESTÃO ---
+
+if modo == "Dashboard de Gestão":
+    st.header("📊 Dashboard de Gestão")
+    st.subheader("Visão Geral das Solicitações")
+
+    # --- FILTRO DE CLIENTE ---
+    # Busca a lista de todos os clientes para popular o filtro
+    lista_de_clientes = get_all_clients()
+    clientes_selecionados = st.multiselect(
+        "Filtrar por Cliente:",
+        options=lista_de_clientes,
+        # Opcional: pode-se definir clientes padrão
+        # default=["ALESC", "SC"]
+    )
+    st.markdown("---")
+
+    with st.spinner("Gerando relatórios..."):
+        # --- Busca todos os dados primeiro ---
+        df_status = get_status_distribution(clientes=clientes_selecionados)
+        df_complexity = get_complexity_distribution(clientes=clientes_selecionados)
+        df_assignee = get_tickets_by_assignee(clientes=clientes_selecionados)
+        df_team = get_tickets_by_team(clientes=clientes_selecionados)
+
+        # --- GERA E EXIBE A ANÁLISE DO AGENTE ---
+        with st.expander("Ver Análise do Agente de Gestão", expanded=True):  # noqa: SIM117
+            with st.spinner("Agente de Gestão está analisando os dados..."):
+                # Verifica se há dados para analisar
+                if (
+                    df_status.empty
+                    and df_complexity.empty
+                    and df_assignee.empty
+                    and df_team.empty
+                ):
+                    st.info(
+                        "Não há dados suficientes para gerar uma análise. Verifique os filtros ou a base de dados."  # noqa: E501
+                    )
+                else:
+                    analise = get_dashboard_analysis(
+                        df_status,
+                        df_complexity,
+                        df_assignee,
+                        df_team,
+                        clientes_selecionados,
+                    )
+                    if analise:
+                        st.markdown(f"**Resumo Geral:** {analise.resumo_geral}")
+                        st.markdown("**Pontos de Atenção:**")
+                        for ponto in analise.pontos_de_atencao:
+                            st.warning(f"- {ponto}")
+                        st.markdown("**Sugestões:**")
+                        for sugestao in analise.sugestoes:
+                            st.success(f"- {sugestao}")
+
+        # --- Métricas Principais (KPIs) ---
+        kpi1, kpi2, kpi3 = st.columns(3)
+        avg_time = get_avg_completion_time()
+        kpi1.metric(label="Tempo Médio de Conclusão", value=avg_time)
+        # Placeholders para futuras métricas
+        kpi2.metric(label="Chamados em Análise (Cliente)", value="N/D")
+        kpi3.metric(label="Faturamento Mês Atual", value="N/D")
+        st.markdown("---")
+
+        # Layout em colunas
+        col1, col2 = st.columns(2)
+
+        # --- Gráfico 1: Distribuição por Status (Gráfico de Pizza) ---
+        with col1:
+            st.markdown("#### Distribuição por Status")
+            if not df_status.empty:
+                fig_status = px.pie(
+                    df_status,
+                    names="status",
+                    values="count",
+                    title="Solicitações por Status",
+                    hole=0.3,  # Cria um "buraco" no meio, estilo Donut Chart
+                )
+                fig_status.update_traces(
+                    textposition="inside", textinfo="percent+label"
+                )
+                st.plotly_chart(fig_status, use_container_width=True)
+            else:
+                st.warning("Nenhum dado de status encontrado.")
+
+        # --- Gráfico 2: Distribuição por Complexidade (Gráfico de Barras) ---
+        with col2:
+            st.markdown("#### Distribuição por Complexidade")
+            if not df_complexity.empty:
+                fig_complexity = px.bar(
+                    df_complexity,
+                    x="complexidade",
+                    y="count",
+                    title="Solicitações por Complexidade",
+                    text_auto=True,  # Adiciona o valor no topo de cada barra
+                    color="complexidade",
+                    color_discrete_map={
+                        "Baixa": "green",
+                        "Média": "orange",
+                        "Alta": "red",
+                    },
+                )
+                st.plotly_chart(fig_complexity, use_container_width=True)
+            else:
+                st.warning("Nenhum dado de complexidade encontrado.")
+
+        st.markdown("---")
+
+        # --- Gráfico 3: Chamados por Responsável (Gráfico de Barras Horizontais) ---
+        st.markdown("#### Chamados por Responsável (Top 15)")
+        if not df_assignee.empty:
+            fig_assignee = px.bar(
+                df_assignee.sort_values(by="count", ascending=True),
+                x="count",
+                y="responsavel",
+                title="Nº de Solicitações por Responsável",
+                text_auto=True,
+                orientation="h",  # Gráfico de barras horizontais
+            )
+            fig_assignee.update_layout(
+                yaxis_title="Responsável", xaxis_title="Nº de Solicitações"
+            )
+            st.plotly_chart(fig_assignee, use_container_width=True)
+        else:
+            st.warning("Nenhum dado de responsável encontrado.")
+
+        # --- Gráfico 4: Chamados por Time (Iteration Path) ---
+        st.markdown("#### Chamados por Time (Top 15)")
+        if not df_team.empty:
+            fig_team = px.bar(
+                df_team.sort_values(by="count", ascending=True),
+                x="count",
+                y="time",
+                title="Nº de Solicitações por Time",
+                text_auto=True,
+                orientation="h",
+            )
+            fig_team.update_layout(
+                yaxis_title="Time (Iteration Path)", xaxis_title="Nº de Solicitações"
+            )
+            st.plotly_chart(fig_team, use_container_width=True)
+        else:
+            st.warning("Nenhum dado de time (Iteration Path) encontrado.")
+
+        st.markdown("---")
+        st.subheader("Outras Métricas (Em Desenvolvimento)")
+        st.info(
+            "Os seguintes relatórios estão planejados e serão implementados assim que os dados necessários estiverem disponíveis no sistema:\n"  # noqa: E501
+            "- Detalhamento do tempo médio por etapa (análise, desenvolvimento, etc.).\n"  # noqa: E501
+            "- Total de chamados em análise pelo cliente.\n"
+            "- Relatório de faturamento mensal com base no esforço."
+        )
+=======
 import logging
 import os
 import sys
@@ -56,18 +369,31 @@ def initialize_graph() -> None:
         node_count = result[0]["count"] if result else 0
 
         if node_count == 0:
-            logging.info(
-                "Banco de dados vazio detectado. Iniciando ingestão automática..."
+            # Check environment variable for automatic ingestion
+            enable_ingestion = (
+                os.getenv("ENABLE_AUTOMATIC_INGESTION", "false").lower() == "true"
             )
-            ingestion = DataIngestion(
-                data_directory="data",
-                structured_data_path="data/solicitacoes.csv",
-                rcm_data_path="data/rcms_01.csv",
-                # Ajuste conforme necessário ou deixe None para processar todos
-                single_manual_path=None,
-            )
-            ingestion.run_ingestion(clear_db=True)
-            logging.info("Ingestão automática concluída.")
+
+            if enable_ingestion:
+                logging.info(
+                    "🔄 ENABLE_AUTOMATIC_INGESTION=true. Iniciando processo de ingestão pesada..."
+                )
+                ingestion = DataIngestion(
+                    data_directory="data",
+                    structured_data_path="data/solicitacoes.csv",
+                    rcm_data_path="data/rcms_01.csv",
+                    # Ajuste conforme necessário ou deixe None para processar todos
+                    single_manual_path=None,
+                )
+                ingestion.run_ingestion(clear_db=True)
+                logging.info("✅ Ingestão automática concluída.")
+            else:
+                logging.warning(
+                    "⏸️ ENABLE_AUTOMATIC_INGESTION está 'false' ou não definido. Pulando ingestão automática para economizar créditos."
+                )
+                logging.info(
+                    "O sistema iniciará com a base de conhecimento no estado atual do banco de dados."
+                )
         else:
             logging.info(
                 f"Banco de dados já populado com {node_count} nós. Pulando ingestão."
@@ -709,6 +1035,13 @@ def render_proactive_agents_interface() -> None:  # noqa: C901, PLR0912, PLR0915
         )
         if st.button("Simular Conclusão de RCM"):
             try:
+                # ingestion = DataIngestion(
+                #     neo4j_uri=os.getenv("NEO4J_URI", "bolt://localhost:7687"),
+                #     neo4j_user=os.getenv("NEO4J_USER", "neo4j"),
+                #     neo4j_password=os.getenv("NEO4J_PASSWORD", "password"),
+                # )
+                # ingestion.run_ingestion(clear_db=True)
+                # logging.info("Ingestão automática concluída.") e a atualiza
                 graph = Neo4jGraph(
                     url=os.getenv("NEO4J_URI"),
                     username=os.getenv("NEO4J_USERNAME"),
@@ -1372,3 +1705,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+>>>>>>> b55c263f4c6229631e8d58bea7ffd1b4e1a45bae

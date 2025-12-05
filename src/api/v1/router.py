@@ -9,16 +9,19 @@ from src.api.v1.endpoints import (
     audit,  # Novo import
     bi,
     chat,
+    commercial,  # Novo import
     dashboard,
     debug,
     document_management,
     documentation,  # Novo import
     documents,
     knowledge,
+    poc,
     quality,
     rcm,
     review,
     solicitacoes,
+    system,
     validacao,
     webhook,
     workflow,
@@ -28,6 +31,7 @@ api_router = APIRouter()
 
 # Rotas existentes
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
+
 api_router.include_router(
     solicitacoes.router, prefix="/solicitacoes", tags=["solicitacoes"]
 )
@@ -52,7 +56,10 @@ api_router.include_router(
 api_router.include_router(
     documentation.router, prefix="/documentation", tags=["documentation"]
 )
-api_router.include_router(audit.router, prefix="/audit", tags=["audit"])  # Nova rota
+api_router.include_router(audit.router, prefix="/audit", tags=["audit"])
+api_router.include_router(
+    system.router, prefix="/system", tags=["system"]
+)  # Infra Health Check
 
 from src.api.v1.endpoints import scrum
 
@@ -65,4 +72,10 @@ api_router.include_router(rcm.router, prefix="/rcm", tags=["rcm (fluxo evolutivo
 api_router.include_router(review.router, prefix="/review", tags=["review técnico"])
 
 # Rota de Qualidade (QCC)
+# Rota de Qualidade (QCC)
 api_router.include_router(quality.router, prefix="/quality", tags=["quality"])
+
+# Rota de POC Generator
+print("DEBUG: Including POC Router")
+api_router.include_router(poc.router, prefix="/poc", tags=["poc generator"])
+api_router.include_router(commercial.router, prefix="/commercial", tags=["commercial"])

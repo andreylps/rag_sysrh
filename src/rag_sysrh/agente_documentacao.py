@@ -1,6 +1,7 @@
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from langchain_community.vectorstores import Neo4jVector
 from langchain_core.output_parsers import StrOutputParser
@@ -45,14 +46,14 @@ class AgenteDocumentacao(BaseAgent):
                 self.embeddings = GoogleGenerativeAIEmbeddings(
                     model="models/embedding-001"
                 )
-                self._NEO4J_VECTOR_INDEX_NAME = "manual-chunks-gemini"
+                self._NEO4J_VECTOR_INDEX_NAME = "manual_chunks-gemini"
                 logging.info(
-                    "Using Gemini (Google) Embeddings and Index 'manual-chunks-gemini'."
+                    "Using Gemini (Google) Embeddings and Index 'manual_chunks-gemini'."
                 )
             else:
                 self.embeddings = OpenAIEmbeddings()
-                self._NEO4J_VECTOR_INDEX_NAME = "manual-chunks"
-                logging.info("Using OpenAI Embeddings and Index 'manual-chunks'.")
+                self._NEO4J_VECTOR_INDEX_NAME = "manual_chunks"
+                logging.info("Using OpenAI Embeddings and Index 'manual_chunks'.")
 
             # Inicializa o retriever para busca vetorial nos manuais
             # Inicializa o retriever para busca vetorial nos manuais
@@ -167,7 +168,7 @@ class AgenteDocumentacao(BaseAgent):
             },
         )
 
-    def listar_atualizacoes_pendentes(self) -> List[Dict[str, Any]]:
+    def listar_atualizacoes_pendentes(self) -> list[dict[str, Any]]:
         """Lista todas as atualizações de documentação pendentes de aprovação."""
         query = """
         MATCH (ad:AtualizacaoDocumento {status: 'Pendente'})
@@ -193,7 +194,7 @@ class AgenteDocumentacao(BaseAgent):
         return len(result) > 0
 
     def _gerar_relatorio_documentacao(
-        self, propostas_geradas: List[Dict[str, Any]]
+        self, propostas_geradas: list[dict[str, Any]]
     ) -> str:
         """Gera um relatório em Markdown sobre as propostas de atualização criadas."""
         logging.info("Gerando relatório do ciclo de documentação...")
@@ -228,7 +229,7 @@ class AgenteDocumentacao(BaseAgent):
     def executar_ciclo_atualizacao(
         self,
         similaridade_minima: float = 0.8,
-        status_callback: Optional[Callable[[str], None]] = None,
+        status_callback: Callable[[str], None] | None = None,
     ) -> str | None:
         """
         Executa o ciclo proativo de verificação de RCMs concluídas para propor
@@ -308,7 +309,7 @@ class AgenteDocumentacao(BaseAgent):
                 )
 
             except Exception as e:
-                logging.error(f"Falha ao processar a RCM {rcm_id}: {e}")
+                logging.exception(f"Falha ao processar a RCM {rcm_id}: {e}")
 
         if not propostas_geradas:
             return "✅ Análise concluída. Nenhuma proposta de atualização de documentação foi necessária neste ciclo."

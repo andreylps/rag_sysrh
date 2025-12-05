@@ -1,0 +1,48 @@
+name: Deploy Profissional VPS
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy_production:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🚚 Checkout do Código
+        uses: actions/checkout@v4
+
+      - name: 🔐 Configuração SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: 🚀 Executar Deploy na VPS
+        run: |
+          # Adiciona o host para evitar prompt de confirmação
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+          # Conecta e executa os comandos remotamente
+          ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
+            set -e # Para o script se qualquer comando falhar
+
+            echo "⬇️ Iniciando atualização do repositório..."
+            cd /root/noesys_deploy/
+            # Garante que estamos na branch main limpa
+            git reset --hard origin/main
+            git pull origin main
+
+            echo "🐳 Atualizando serviços Docker (Neo4j, Simulador, Frontend)..."
+            # Se houver mudanças nas imagens ou no compose, isso aplica
+            docker compose up -d --build --remove-orphans
+
+            echo "🐍 Atualizando dependências do Backend Python..."
+            cd /root/noesys_deploy/RAG_SYSRH/
+            source venv/bin/activate
+            pip install -r requirements.txt
+
+            echo "🔄 Reiniciando o serviço do Backend (Systemd)..."
+            # Este é o comando chave que substitui o nohup
+            sudo systemctl restart noesys-backend
+
+            echo "✅ Deploy concluído com sucesso!"
+          EOF

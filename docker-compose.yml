@@ -1,0 +1,76 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - SIMULATOR_TARGET_PATH=/mnt/simulador_target
+      - NEO4J_URI=${NEO4J_URI:-bolt://neo4j:7687}
+      - NEO4J_USERNAME=${NEO4J_USERNAME:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - simulador_code_data:/mnt/simulador_target
+      - ./data:/app/data
+    depends_on:
+      - neo4j
+      - simulador
+    networks:
+      - noesys_net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_API_URL: /api/v1
+        VITE_WS_URL: ws://77.37.40.162/api/v1
+
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - noesys_net
+    extra_hosts:
+      - "backend:host-gateway"
+
+  simulador:
+    build:
+      context: ./rh-gov-simulador
+      dockerfile: Dockerfile.simulador
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./rh-gov-simulador:/app
+    networks:
+      - noesys_net
+
+  neo4j:
+    image: neo4j:5.15-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_AUTH=neo4j/password
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_security_procedures_allowlist=apoc.*
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - noesys_net
+
+volumes:
+  simulador_code_data:
+  neo4j_data:
+
+networks:
+  noesys_net:
+    driver: bridge

@@ -15,6 +15,7 @@ import {
   ChevronLeft,
   Home,
 } from "lucide-react";
+import { API_BASE_URL } from "../config";
 
 const DocumentationPage = () => {
   const [activeTab, setActiveTab] = useState("all"); // 'all' or 'search'
@@ -46,9 +47,7 @@ const DocumentationPage = () => {
     setLoading(true);
     try {
       const response = await axios.get(
-        `http://localhost:8080/api/v1/documentation/list?path=${encodeURIComponent(
-          path
-        )}`
+        `${API_BASE_URL}/documentation/list?path=${encodeURIComponent(path)}`
       );
       setDocuments(response.data);
     } catch (err) {
@@ -85,7 +84,7 @@ const DocumentationPage = () => {
     setSearching(true);
     try {
       const response = await axios.get(
-        `http://localhost:8080/api/v1/documentation/search?query=${encodeURIComponent(
+        `${API_BASE_URL}/documentation/search?query=${encodeURIComponent(
           searchQuery
         )}`
       );
@@ -101,7 +100,7 @@ const DocumentationPage = () => {
   const handleDownload = async (filePath, fileName) => {
     try {
       const response = await axios.get(
-        `http://localhost:8080/api/v1/documentation/download?file_path=${encodeURIComponent(
+        `${API_BASE_URL}/documentation/download?file_path=${encodeURIComponent(
           filePath
         )}`,
         { responseType: "blob" }
@@ -125,7 +124,7 @@ const DocumentationPage = () => {
     setSummary(null); // Limpa resumo anterior
     try {
       const response = await axios.get(
-        `http://localhost:8080/api/v1/documentation/summarize?file_path=${encodeURIComponent(
+        `${API_BASE_URL}/documentation/summarize?file_path=${encodeURIComponent(
           filePath
         )}`
       );
@@ -141,7 +140,7 @@ const DocumentationPage = () => {
   const handlePrint = (filePath) => {
     // Abre o arquivo em uma nova aba para impressão (o navegador gerencia PDF/Imagem/Texto)
     // Para DOCX/XLSX, o navegador fará download, o que é o comportamento esperado se não houver conversor.
-    const url = `http://localhost:8080/api/v1/documentation/download?file_path=${encodeURIComponent(
+    const url = `${API_BASE_URL}/documentation/download?file_path=${encodeURIComponent(
       filePath
     )}`;
     window.open(url, "_blank");
@@ -335,6 +334,20 @@ const DocumentationPage = () => {
             <>
               <div className="grid grid-cols-1 gap-4">
                 {documents
+                  .filter((doc) => {
+                    if (currentPath !== "") return true;
+                    // Na raiz, mostrar apenas as pastas permitidas
+                    // Nomes reais das pastas no sistema de arquivos:
+                    const allowedFolders = [
+                      "manuais",
+                      "Normas",
+                      "guia_metricas",
+                      "Procedimentos",
+                    ];
+                    return (
+                      doc.type === "folder" && allowedFolders.includes(doc.name)
+                    );
+                  })
                   .slice(0, visibleCount)
                   .map((doc) => renderDocumentRow(doc))}
               </div>

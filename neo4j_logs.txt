@@ -1,0 +1,37 @@
+Installing Plugin 'apoc' from /var/lib/neo4j/labs/apoc-*-core.jar to /var/lib/neo4j/plugins/apoc.jar
+Applying default values for plugin apoc to neo4j.conf
+Changed password for user 'neo4j'. IMPORTANT: this change will only take effect if performed before the database is started for the first time.
+2025-12-03 17:51:25.220+0000 INFO  Logging config in use: File '/var/lib/neo4j/conf/user-logs.xml'
+2025-12-03 17:51:25.239+0000 INFO  Starting...
+2025-12-03 17:51:25.857+0000 INFO  This instance is ServerId{d3acd596} (d3acd596-28a8-4e08-aa7c-2e5876e17b1e)
+2025-12-03 17:51:26.310+0000 INFO  ======== Neo4j 5.15.0 ========
+2025-12-03 17:51:30.001+0000 INFO  Bolt enabled on 0.0.0.0:7687.
+2025-12-03 17:51:30.595+0000 INFO  HTTP enabled on 0.0.0.0:7474.
+2025-12-03 17:51:30.596+0000 INFO  Remote interface available at http://localhost:7474/
+2025-12-03 17:51:30.599+0000 INFO  id: D2C4A1C9112C78EB2134B85E1D4E06D0E054E53065920DDB12E471FF414CF7A8
+2025-12-03 17:51:30.599+0000 INFO  name: system
+2025-12-03 17:51:30.599+0000 INFO  creationDate: 2025-11-27T23:42:59.021Z
+2025-12-03 17:51:30.599+0000 INFO  Started.
+Installing Plugin 'apoc' from /var/lib/neo4j/labs/apoc-*-core.jar to /var/lib/neo4j/plugins/apoc.jar
+Applying default values for plugin apoc to neo4j.conf
+Skipping dbms.security.procedures.unrestricted for plugin apoc because it is already set.
+You may need to add apoc.* to the dbms.security.procedures.unrestricted setting in your configuration file.
+Changed password for user 'neo4j'. IMPORTANT: this change will only take effect if performed before the database is started for the first time.
+2025-12-03 18:23:59.553+0000 INFO  Logging config in use: File '/var/lib/neo4j/conf/user-logs.xml'
+2025-12-03 18:23:59.573+0000 INFO  Starting...
+2025-12-03 18:24:00.253+0000 INFO  This instance is ServerId{d3acd596} (d3acd596-28a8-4e08-aa7c-2e5876e17b1e)
+2025-12-03 18:24:00.896+0000 INFO  ======== Neo4j 5.15.0 ========
+2025-12-03 18:24:04.436+0000 INFO  Bolt enabled on 0.0.0.0:7687.
+2025-12-03 18:24:05.089+0000 INFO  HTTP enabled on 0.0.0.0:7474.
+2025-12-03 18:24:05.091+0000 INFO  Remote interface available at http://localhost:7474/
+2025-12-03 18:24:05.095+0000 INFO  id: D2C4A1C9112C78EB2134B85E1D4E06D0E054E53065920DDB12E471FF414CF7A8
+2025-12-03 18:24:05.095+0000 INFO  name: system
+2025-12-03 18:24:05.096+0000 INFO  creationDate: 2025-11-27T23:42:59.021Z
+2025-12-03 18:24:05.096+0000 INFO  Started.
+Installing Plugin 'apoc' from /var/lib/neo4j/labs/apoc-*-core.jar to /var/lib/neo4j/plugins/apoc.jar
+Applying default values for plugin apoc to neo4j.conf
+Skipping dbms.security.procedures.unrestricted for plugin apoc because it is already set.
+You may need to add apoc.* to the dbms.security.procedures.unrestricted setting in your configuration file.
+Changed password for user 'neo4j'. IMPORTANT: this change will only take effect if performed before the database is started for the first time.
+Neo4j is already running (pid:7).
+Run with '--verbose' for a more detailed error message.

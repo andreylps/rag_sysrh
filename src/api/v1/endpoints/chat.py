@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-from typing import List
 
 from fastapi import APIRouter, Body, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
@@ -21,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: list[WebSocket] = []
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -234,38 +233,47 @@ Você é o Assistente Virtual Inteligente do sistema RAG SYS-RH.
 
 **SUAS CAPACIDADES:**
 1. **Responder Dúvidas:** Use o contexto abaixo para responder perguntas sobre o sistema.
-2. **Abrir Solicitações:** Se o usuário relatar um problema, bug ou pedir uma melhoria, **OFEREÇA** abrir uma solicitação.
-   - Se o usuário aceitar, colete: Título (resumido), Descrição detalhada, Prioridade e Tipo.
-   - **VOCÊ DEVE CHAMAR A FERRAMENTA `create_solicitation` PARA REGISTRAR.**
-   - **NÃO RESPONDA COM TEXTO DIZENDO QUE VAI FAZER. FAÇA!**
-   - **CHAME A FERRAMENTA.**
+2. **Analisar Imagens:** Você é capaz de ver e interpretar imagens enviadas pelo usuário. Se uma imagem for enviada, descreva-a ou responda à pergunta do usuário sobre ela.
+3. **Abrir Solicitações (CRÍTICO):** Se o usuário relatar um problema, bug ou pedir uma melhoria, você **DEVE** seguir este protocolo:
 
-**DIRETRIZES:**
-- Seja prestativo e profissional.
-- Se o usuário disser "meu sistema travou", pergunte detalhes e ofereça abrir um chamado.
-- Se o usuário perguntar "como faço X", explique usando o contexto.
-- NÃO invente informações se não estiverem no contexto.
+**PROTOCOLO DE CRIAÇÃO DE SOLICITAÇÃO:**
+1.  **Identificar Intenção:** O usuário quer registrar algo?
+2.  **Coletar Dados:** Verifique se você tem TODOS os seguintes dados:
+    *   **Título:** Um resumo curto do problema.
+    *   **Descrição:** Detalhes do que está acontecendo.
+    *   **Prioridade:** Baixa, Média ou Alta.
+    *   **Tipo:** Evolutiva, Corretiva, Dúvida ou Operação.
+3.  **Solicitar Faltantes:** Se faltar algum dado, PERGUNTE ao usuário. Não invente.
+4.  **CHAMAR A FERRAMENTA:** Assim que tiver os 4 dados, **NÃO PERGUNTE MAIS NADA**. CHAME IMEDIATAMENTE a ferramenta `create_solicitation`.
+    *   NÃO diga "Vou criar o chamado". APENAS CHAME A FERRAMENTA.
 
-**CONTEXTO RECUPERADO:**
+**CONTEXTO RECUPERADO (Use para responder dúvidas):**
 {context_text}
 """
-                # system_prompt = system_prompt.replace(
-                #     "{contexto_extra_placeholder}", context_text
-                # )
+                messages = [SystemMessage(content=system_prompt)] + history_messages
 
-                messages = (
-                    [SystemMessage(content=system_prompt)]
-                    + history_messages
-                    + [HumanMessage(content=text_input)]
-                )
-
-                # Inject reminder if user mentions priority (hack to force tool)
-                if "prioridade" in text_input.lower():
-                    messages.append(
-                        SystemMessage(
-                            content="O usuário forneceu os dados. CHAME A FERRAMENTA create_solicitation AGORA."
-                        )
+                # Construct Human Message (Text or Multimodal)
+                if attachments:
+                    logger.info(
+                        f"Processing {len(attachments)} attachments for multimodal message."
                     )
+                    content_parts = [{"type": "text", "text": text_input}]
+                    for att in attachments:
+                        # Assuming att['content'] is the base64 string (data:image/png;base64,...)
+                        # OpenAI expects "image_url": {"url": "data:image/jpeg;base64,..."}
+                        if "image" in att.get("type", "") or att.get(
+                            "content", ""
+                        ).startswith("data:image"):
+                            content_parts.append(
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": att["content"]},
+                                }
+                            )
+
+                    messages.append(HumanMessage(content=content_parts))
+                else:
+                    messages.append(HumanMessage(content=text_input))
 
                 # 3. LLM Execution with Tools
                 logger.info("Invoking LLM...")
@@ -310,7 +318,7 @@ Você é o Assistente Virtual Inteligente do sistema RAG SYS-RH.
 
             except Exception as e:
                 logger.error(f"Error processing request: {e}", exc_info=True)
-                response = f"Ocorreu um erro ao processar sua solicitação: {str(e)}"
+                response = f"Ocorreu um erro ao processar sua solicitação: {e!s}"
 
             # Save AI Response
             if session_id:

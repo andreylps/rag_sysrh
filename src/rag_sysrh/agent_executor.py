@@ -1,3 +1,73 @@
+<<<<<<< HEAD
+import logging
+
+from langchain_classic.agents import AgentExecutor, create_react_agent
+from langchain_classic.memory.buffer import ConversationBufferMemory
+from langchain_core.prompts import PromptTemplate
+
+# Configura o logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+
+def build_agent(llm, tools):  # noqa: ANN001, ANN201
+    """Cria o Agente LangChain com as ferramentas fornecidas."""
+    # Prompt no formato ReAct esperado pelo create_react_agent
+    prompt = PromptTemplate.from_template(
+        """Você é um agente especialista em responder perguntas sobre um banco de dados Neo4j.
+Seja o mais prestativo possível. Você tem acesso a um conjunto de ferramentas.
+
+Use o "Histórico da Conversa" para entender o contexto. Siga estas regras:
+1. Para perguntas de acompanhamento (usando termos como 'deles', 'disso', 'o primeiro'), use o histórico para reformular a pergunta de forma completa antes de usar uma ferramenta.
+2. Se o usuário corrigir uma informação (usando termos como 'digo', 'quis dizer', 'na verdade é'), você DEVE usar a informação corrigida da pergunta mais recente e descartar a informação incorreta da pergunta anterior.
+3. **REGRA CRÍTICA**: Se a pergunta do usuário for ambígua, vaga ou faltar informações essenciais para usar uma ferramenta (ex: "quantos recusados?" sem especificar o cliente), você NÃO DEVE usar uma ferramenta. Em vez disso, sua resposta final DEVE ser uma pergunta pedindo esclarecimentos.
+   Exemplo de como agir:
+   Question: quantos recusados?
+   Thought: A pergunta é vaga. Não sei a que 'recusados' se refere nem para qual cliente. Preciso pedir esclarecimentos. Não vou usar uma ferramenta.
+   Final Answer: Você poderia especificar a que se refere com 'recusados'? São chamados, RCMs ou outra coisa? E para qual cliente você gostaria de saber?
+4. **Transparência da Fonte**: Se você usar a ferramenta `Web_Search` para encontrar a resposta, mencione isso na sua `Final Answer`. Exemplo: "Com base em uma pesquisa na web, a progressão no sistema SIGRH funciona da seguinte maneira...".
+
+Histórico da Conversa:
+{chat_history}
+
+Use as ferramentas para responder à pergunta do usuário.
+
+Você tem acesso às seguintes ferramentas:
+
+{tools}
+
+Use o seguinte formato:
+
+Question: a pergunta de entrada que você deve responder
+Thought: você deve sempre pensar sobre o que fazer
+Action: a ação a ser tomada, deve ser uma de [{tool_names}]
+Action Input: a entrada para a ação
+Observation: o resultado da ação
+... (este Thought/Action/Action Input/Observation pode se repetir N vezes)
+Thought: Agora eu sei a resposta final
+Final Answer: a resposta final para a pergunta original
+
+Comece!
+
+Question: {input}
+Thought: {agent_scratchpad}"""  # noqa: E501
+    )
+
+    # Configura a memória para armazenar o histórico da conversa
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
+
+    agent = create_react_agent(llm, tools, prompt)
+
+    # Retorna o AgentExecutor com a memória configurada
+    return AgentExecutor(
+        agent=agent,
+        tools=tools,
+        memory=memory,  # Adiciona a memória ao executor
+        verbose=True,
+        handle_parsing_errors=True,
+    )
+=======
 import logging
 
 from langchain_classic.agents import AgentExecutor, create_react_agent
@@ -76,3 +146,4 @@ Thought: {agent_scratchpad}"""  # noqa: E501
         verbose=True,
         handle_parsing_errors=_handle_parsing_errors,
     )
+>>>>>>> b55c263f4c6229631e8d58bea7ffd1b4e1a45bae

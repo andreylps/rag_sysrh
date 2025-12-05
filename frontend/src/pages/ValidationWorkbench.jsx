@@ -7,6 +7,7 @@ import Select from "react-select"; // Vamos instalar para campos de seleção bo
 import CreatableSelect from "react-select/creatable"; // Para RCMs que podem ser novas
 import ReactMarkdown from "react-markdown";
 import HistoryTable from "../components/HistoryTable"; // Novo componente
+import { API_BASE_URL } from "../config";
 
 const ValidationWorkbench = () => {
   const { issue_number } = useParams(); // Pega o número da issue da URL
@@ -41,9 +42,7 @@ const ValidationWorkbench = () => {
       const fetchHistory = async () => {
         setLoadingHistory(true);
         try {
-          const response = await fetch(
-            "http://localhost:8080/api/v1/validacao/history"
-          );
+          const response = await fetch(`${API_BASE_URL}/validacao/history`);
           if (!response.ok) throw new Error("Erro ao buscar histórico");
           const data = await response.json();
           setHistoryIssues(data);
@@ -87,7 +86,7 @@ const ValidationWorkbench = () => {
       try {
         // --- BUSCA REAL DO BACKEND ---
         const response = await fetch(
-          `http://localhost:8080/api/v1/validacao/issues/${issue_number}`
+          `${API_BASE_URL}/validacao/issues/${issue_number}`
         );
 
         if (!response.ok) {
@@ -154,18 +153,15 @@ const ValidationWorkbench = () => {
           client_email: clientEmail || null, // Envia o e-mail se preenchido
         };
 
-        response = await fetch(
-          `http://localhost:8080/api/v1/rcm/${issue_number}/approve`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(rcmPayload),
-          }
-        );
+        response = await fetch(`${API_BASE_URL}/rcm/${issue_number}/approve`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(rcmPayload),
+        });
       } else {
         // --- FLUXO PADRÃO ---
         response = await fetch(
-          `http://localhost:8080/api/v1/validacao/${issue_number}/approve`,
+          `${API_BASE_URL}/validacao/${issue_number}/approve`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -184,7 +180,7 @@ const ValidationWorkbench = () => {
 
       // Se for RCM, mostra o link gerado antes de sair
       if (isRcmMode) {
-        const link = `http://localhost:5173/cliente/aprovacao/${issue_number}`;
+        const link = `${window.location.origin}/cliente/aprovacao/${issue_number}`;
         setGeneratedLink(link);
         if (data.email_status) {
           setEmailStatus(data.email_status);
@@ -401,7 +397,7 @@ const ValidationWorkbench = () => {
 
       {/* --- CONTEÚDO DA ABA: HISTÓRICO --- */}
       {activeTab === "history" && (
-        <div className="flex-grow overflow-auto">
+        <div className="grow overflow-auto">
           {loadingHistory ? (
             <div className="flex justify-center items-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
@@ -419,10 +415,7 @@ const ValidationWorkbench = () => {
 
       {/* --- CONTEÚDO DA ABA: PENDENTE (Formulário Original) --- */}
       {activeTab === "pending" && (
-        <form
-          onSubmit={handleSubmit}
-          className="flex-grow flex flex-col space-y-6"
-        >
+        <form onSubmit={handleSubmit} className="grow flex flex-col space-y-6">
           {/* Botão de Atualizar */}
           <div className="flex justify-end">
             <button
@@ -454,13 +447,13 @@ const ValidationWorkbench = () => {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-grow">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 grow">
             {/* Coluna Esquerda: Detalhes da Demanda Original (Read-only) */}
             <div className="card bg-slate-800/50 p-6 flex flex-col h-full">
               <h2 className="text-xl font-semibold text-slate-200 mb-4">
                 Demanda Original (GitHub)
               </h2>
-              <div className="flex-grow overflow-y-auto pr-2">
+              <div className="grow overflow-y-auto pr-2">
                 <h3 className="text-lg font-bold text-slate-300 mb-2">
                   {issueDetails.title}
                 </h3>
@@ -590,7 +583,7 @@ const ValidationWorkbench = () => {
                   ? "Revisão de RCM (IA)"
                   : "Análise da IA (Revisar e Ajustar)"}
               </h2>
-              <div className="flex-grow overflow-y-auto pr-2 space-y-4">
+              <div className="grow overflow-y-auto pr-2 space-y-4">
                 {issueDetails.labels &&
                 issueDetails.labels.includes(
                   "status:aguardando-liberacao-dev"
@@ -627,7 +620,7 @@ const ValidationWorkbench = () => {
                           setSubmitting(true);
                           try {
                             const response = await fetch(
-                              `http://localhost:8080/api/v1/workflow/${issue_number}/release-fast-track`,
+                              `${API_BASE_URL}/workflow/${issue_number}/release-fast-track`,
                               {
                                 method: "POST",
                               }
@@ -676,7 +669,7 @@ const ValidationWorkbench = () => {
                           type="button"
                           onClick={() =>
                             window.open(
-                              `http://localhost:8080/api/v1/rcm/${issue_number}/download-memoria`,
+                              `${API_BASE_URL}/rcm/${issue_number}/download-memoria`,
                               "_blank"
                             )
                           }
@@ -704,7 +697,7 @@ const ValidationWorkbench = () => {
                           type="button"
                           onClick={() =>
                             window.open(
-                              `http://localhost:8080/api/v1/docs/rcm/${issue_number}/download`,
+                              `${API_BASE_URL}/docs/rcm/${issue_number}/download`,
                               "_blank"
                             )
                           }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { API_BASE_URL } from "../config";
 
 const Knowledge = () => {
   const [documents, setDocuments] = useState([]);
@@ -24,7 +25,7 @@ const Knowledge = () => {
   const fetchDocuments = async () => {
     try {
       const response = await fetch(
-        "http://localhost:8080/api/v1/knowledge/documents"
+        `${API_BASE_URL}/knowledge/documents`
       );
       if (response.ok) {
         const data = await response.json();
@@ -52,7 +53,7 @@ const Knowledge = () => {
 
     try {
       const response = await fetch(
-        "http://localhost:8080/api/v1/knowledge/upload",
+        `${API_BASE_URL}/knowledge/upload`,
         {
           method: "POST",
           body: formData,
@@ -91,7 +92,7 @@ const Knowledge = () => {
 
     try {
       const response = await fetch(
-        `http://localhost:8080/api/v1/knowledge/documents/${filename}`,
+        `${API_BASE_URL}/knowledge/documents/${filename}`,
         {
           method: "DELETE",
           headers: {
@@ -128,7 +129,7 @@ const Knowledge = () => {
   const openSyncModal = async () => {
     setShowSyncModal(true);
     try {
-      const res = await fetch("http://localhost:8080/api/v1/knowledge/manuals");
+      const res = await fetch(`${API_BASE_URL}/knowledge/manuals`);
       if (res.ok) {
         const data = await res.json();
         setAvailableManuals(data);
@@ -150,7 +151,7 @@ const Knowledge = () => {
     setSyncing(true);
     try {
       const response = await fetch(
-        "http://localhost:8080/api/v1/knowledge/ingest",
+        `${API_BASE_URL}/knowledge/ingest`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

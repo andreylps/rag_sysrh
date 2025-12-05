@@ -23,6 +23,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { API_BASE_URL } from "../config";
 
 const QualityControlRoom = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -40,16 +41,53 @@ const QualityControlRoom = () => {
   const [auditSchedule, setAuditSchedule] = useState([]);
   const [pdcaReports, setPdcaReports] = useState([]);
 
+  const [isoMetrics, setIsoMetrics] = useState(null);
+  const [monthlyReport, setMonthlyReport] = useState(null);
+  const [generatingReport, setGeneratingReport] = useState(false);
+
   useEffect(() => {
     fetchMetrics();
     fetchAuditData();
+    fetchIsoIndicators();
   }, []);
+
+  const fetchIsoIndicators = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/quality/iso-indicators`);
+      if (response.ok) {
+        const data = await response.json();
+        setIsoMetrics(data);
+      }
+    } catch (error) {
+      console.error("Erro ao buscar indicadores ISO:", error);
+    }
+  };
+
+  const generateMonthlyReport = async () => {
+    setGeneratingReport(true);
+    setMonthlyReport(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/quality/agent/monthly-report`,
+        { method: "POST" }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setMonthlyReport(data.report);
+      } else {
+        alert("Erro ao gerar relatório.");
+      }
+    } catch (error) {
+      console.error("Erro ao gerar relatório mensal:", error);
+      alert("Erro de conexão.");
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
 
   const fetchMetrics = async () => {
     try {
-      const response = await fetch(
-        "http://localhost:8080/api/v1/quality/metrics"
-      );
+      const response = await fetch(`${API_BASE_URL}/quality/metrics`);
       if (response.ok) {
         const data = await response.json();
         setMetrics(data);
@@ -63,8 +101,8 @@ const QualityControlRoom = () => {
   const fetchAuditData = async () => {
     try {
       const [scheduleRes, reportsRes] = await Promise.all([
-        fetch("http://localhost:8080/api/v1/audit/schedule"),
-        fetch("http://localhost:8080/api/v1/audit/reports"),
+        fetch(`${API_BASE_URL}/audit/schedule`),
+        fetch(`${API_BASE_URL}/audit/reports`),
       ]);
 
       if (scheduleRes.ok) {
@@ -81,6 +119,105 @@ const QualityControlRoom = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const renderISOIndicators = () => {
+    if (!isoMetrics)
+      return <div className="text-white">Carregando indicadores ISO...</div>;
+
+    const MetricCard = ({ title, data, icon: Icon, color }) => (
+      <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
+        <div className="flex items-center gap-2 mb-3">
+          <Icon className={`text-${color}-400`} size={20} />
+          <h4 className="text-slate-200 font-semibold">{title}</h4>
+        </div>
+        <div className="space-y-2">
+          {Object.entries(data).map(([key, value]) => (
+            <div key={key} className="flex justify-between text-sm">
+              <span className="text-slate-400 capitalize">
+                {key.replace(/_/g, " ")}
+              </span>
+              <span className="text-white font-mono">{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold text-white">
+            Painel de Indicadores ISO (12207, 25000, 27001, 9001)
+          </h2>
+          <button
+            onClick={generateMonthlyReport}
+            disabled={generatingReport}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg flex items-center gap-2 disabled:opacity-50"
+          >
+            {generatingReport ? (
+              <Activity className="animate-spin" />
+            ) : (
+              <FileText size={18} />
+            )}
+            Gerar Relatório Mensal (IA)
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <MetricCard
+            title="Processos (ISO 12207)"
+            data={isoMetrics.process}
+            icon={Activity}
+            color="blue"
+          />
+          <MetricCard
+            title="Produto (ISO 25000)"
+            data={isoMetrics.product}
+            icon={Code}
+            color="indigo"
+          />
+          <MetricCard
+            title="Segurança (ISO 27001)"
+            data={isoMetrics.security}
+            icon={Lock}
+            color="red"
+          />
+          <MetricCard
+            title="Documentação (ISO 9001)"
+            data={isoMetrics.documentation}
+            icon={FileText}
+            color="yellow"
+          />
+          <MetricCard
+            title="Auditoria & Governança"
+            data={isoMetrics.audit}
+            icon={ShieldCheck}
+            color="emerald"
+          />
+          <MetricCard
+            title="Testes (ISO 29119)"
+            data={isoMetrics.tests}
+            icon={CheckCircle}
+            color="purple"
+          />
+        </div>
+
+        {monthlyReport && (
+          <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 mt-6">
+            <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <FileText className="text-emerald-400" />
+              Relatório Gerado pela IA
+            </h3>
+            <div className="prose prose-invert max-w-none bg-slate-900/50 p-4 rounded-lg">
+              <pre className="whitespace-pre-wrap font-sans text-sm text-slate-300">
+                {monthlyReport}
+              </pre>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderDashboard = () => (
@@ -250,10 +387,9 @@ const QualityControlRoom = () => {
         // Vou adicionar um endpoint rápido no router.py ou assumir que o usuário vai rodar o script.
         // Para facilitar, vou adicionar um botão que chama um endpoint novo (que precisarei criar rapidinho ou mockar aqui).
         // Vou assumir que o backend expõe POST /api/v1/audit/plan-quarterly
-        const res = await fetch(
-          "http://localhost:8080/api/v1/audit/plan-quarterly",
-          { method: "POST" }
-        );
+        const res = await fetch(`${API_BASE_URL}/audit/plan-quarterly`, {
+          method: "POST",
+        });
         if (res.ok) {
           alert("Planejamento trimestral gerado!");
           fetchAuditData();
@@ -392,7 +528,7 @@ const QualityControlRoom = () => {
                 ) {
                   try {
                     const res = await fetch(
-                      "http://localhost:8080/api/v1/audit/trigger-sprint",
+                      `${API_BASE_URL}/audit/trigger-sprint`,
                       { method: "POST" }
                     );
                     if (res.ok) {
@@ -570,7 +706,7 @@ const QualityControlRoom = () => {
                     </span>
                   </div>
                   <a
-                    href={`http://localhost:8080/api/v1/audit/reports/${report.id}/download`}
+                    href={`${API_BASE_URL}/audit/reports/${report.id}/download`}
                     target="_blank"
                     rel="noreferrer"
                     className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm transition-colors"
@@ -655,6 +791,19 @@ const QualityControlRoom = () => {
           )}
         </button>
         <button
+          onClick={() => setActiveTab("iso")}
+          className={`pb-4 px-2 text-sm font-medium transition-colors relative ${
+            activeTab === "iso"
+              ? "text-indigo-400"
+              : "text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          Indicadores ISO
+          {activeTab === "iso" && (
+            <div className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-500 rounded-t-full" />
+          )}
+        </button>
+        <button
           onClick={() => setActiveTab("calendar")}
           className={`pb-4 px-2 text-sm font-medium transition-colors relative ${
             activeTab === "calendar"
@@ -685,6 +834,7 @@ const QualityControlRoom = () => {
       {/* Content */}
       <div className="min-h-[500px]">
         {activeTab === "dashboard" && renderDashboard()}
+        {activeTab === "iso" && renderISOIndicators()}
         {activeTab === "calendar" && renderCalendar()}
         {activeTab === "pdca" && renderPDCA()}
       </div>

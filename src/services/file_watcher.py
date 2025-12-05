@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
@@ -25,10 +26,16 @@ class KnowledgeBaseEventHandler(FileSystemEventHandler):
         if event.is_directory:
             return
 
-        filename = os.path.basename(event.src_path)
-        if filename.startswith("~") or filename.startswith("."):
-            return  # Ignore temp/hidden files
+        path = Path(event.src_path)
 
+        # Performance: Ignore specific directories and hidden files
+        if any(
+            part.startswith(".") or part == "node_modules" or part == "__pycache__"
+            for part in path.parts
+        ):
+            return
+
+        filename = path.name
         if filename.endswith(".json"):
             return  # Ignore system JSON files (schedules, reports)
 
