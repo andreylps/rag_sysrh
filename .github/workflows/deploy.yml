@@ -41,11 +41,11 @@ jobs:
               
               # --- NOVOS COMANDOS GIT (Mais robustos) ---
               # 1. Busca as informações mais recentes do remoto sem baixar os arquivos ainda
-              git fetch origin main
+              git fetch origin main_1
               
               # 2. FORÇA (hard reset) a pasta local a ficar IDÊNTICA à versão do GitHub
               # Isso evita conflitos e o erro de branch desconhecida.
-              git reset --hard origin/main
+              git reset --hard origin/main_1
               # ----------------------------------------
               
           
