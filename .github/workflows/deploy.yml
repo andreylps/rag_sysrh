@@ -2,7 +2,7 @@ name: Deploy Profissional VPS
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main_1"]
 
 jobs:
   deploy_production:
@@ -46,4 +46,5 @@ jobs:
 
             echo "✅ Deploy concluído com sucesso!"
           EOF
+
 # Trigger update
