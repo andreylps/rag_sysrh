@@ -19,37 +19,57 @@ jobs:
       - name: 🚀 Executar Deploy na VPS
         run: |
           
-          # Adiciona o host para evitar prompt de confirmação
+         # Adiciona o host para evitar prompt de confirmação
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
           # Conecta e executa os comandos remotamente
           ssh -o StrictHostKeyChecking=no ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
             set -e # Para o script se qualquer comando falhar
-            
-          # --- LINHA NOVA AQUI: Entre na pasta correta ---
-          # (Substitua pelo caminho real na sua VPS!)  
-          cd /noesys_deploy/RAG_SYSRH
-          
-            echo "⬇️ Iniciando atualização do repositório..."
-            cd /root/noesys_deploy/
-            # Garante que estamos na branch main limpa
-            git reset --hard origin/main
-            git pull origin main
 
-            echo "🐳 Atualizando serviços Docker (Neo4j, Simulador, Frontend)..."
-            # Se houver mudanças nas imagens ou no compose, isso aplica
-            docker compose up -d --build --remove-orphans
+            # --- Configurações do Caminho ---
+            PROJECT_PATH="/noesys_deploy/RAG_SYSRH"
+            REPO_URL="https://github.com/andreylps/rag_sysrh.git"
+            # --------------------------------
 
-            echo "🐍 Atualizando dependências do Backend Python..."
-            cd /root/noesys_deploy/RAG_SYSRH/
-            source venv/bin/activate
-            pip install -r requirements.txt
+            echo "🔍 Verificando diretório do projeto em: $PROJECT_PATH"
 
-            echo "🔄 Reiniciando o serviço do Backend (Systemd)..."
-            # Este é o comando chave que substitui o nohup
-            sudo systemctl restart noesys-backend
+            if [ -d "$PROJECT_PATH" ]; then
+              # --- CENÁRIO 1: O projeto já existe ---
+              echo "📂 Pasta encontrada. Entrando e atualizando repositório..."
+              cd "$PROJECT_PATH"
+              # Garante que estamos na branch main antes de puxar
+              git checkout main
+              git pull origin main
+            else
+              # --- CENÁRIO 2: Primeira vez (pasta não existe) ---
+              echo "🤷‍♂️ Pasta não encontrada. Realizando o primeiro clone..."
+              # Cria o diretório pai se necessário (ex: /noesys_deploy)
+              mkdir -p "$(dirname "$PROJECT_PATH")"
+              # Clona o projeto para a pasta destino
+              git clone "$REPO_URL" "$PROJECT_PATH"
+              # Entra na pasta recém-criada
+              cd "$PROJECT_PATH"
+              echo "✅ Clone inicial concluído com sucesso."
+            fi
 
-            echo "✅ Deploy concluído com sucesso!"
+            # --- A partir daqui, já estamos dentro da pasta correta ---
+
+            echo "📦 Instalando/Atualizando dependências com uv..."
+            # Garante que o uv está instalado (caso a VPS seja nova)
+            if ! command -v uv &> /dev/null; then
+                echo "Installing uv..."
+                curl -LsSf https://astral.sh/uv/install.sh | sh
+                source $HOME/.cargo/env
+            fi
+            uv sync
+
+            # Nota: Os comandos de systemd (restart service) vão falhar 
+            # na primeira vez porque o serviço ainda não foi criado.
+            # Vamos comentar por enquanto e focar em fazer o código chegar lá.
+            # echo "🔄 Reiniciando serviço Systemd..."
+            # sudo systemctl restart rag_sysrh.service
+
+            echo "✅ Deploy concluído com sucesso! (Código e dependências atualizados)"
           EOF
 
 # Trigger update
