@@ -18,8 +18,7 @@ jobs:
 
       - name: 🚀 Executar Deploy na VPS
         run: |
-          
-         # Adiciona o host para evitar prompt de confirmação
+          # Adiciona o host para evitar prompt de confirmação
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
           # Conecta e executa os comandos remotamente
