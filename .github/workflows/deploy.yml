@@ -83,7 +83,7 @@ jobs:
             # Nota: Os comandos de systemd vão falhar agora porque o serviço 
             # ainda não foi criado. Vamos manter comentado por enquanto.
             echo "🔄 Reiniciando serviço Systemd..."
-            sudo systemctl restart rag_sysrh.service
+            sudo systemctl restart noesys-backend.service
 
             echo "✅ Deploy concluído com sucesso! (Código e dependências prontos)"
           EOF
