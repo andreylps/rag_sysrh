@@ -1,0 +1,4 @@
+chamado_id,descricao,tipo_demanda,pontos_funcao,valor_calculado,observacao
+EVO-2025-07-001,"Implementação de novo campo de data na tela de cadastro de servidor",Evolutiva,8,960,"Cálculo baseado em 8 PF * R$120/PF. Complexidade baixa."
+EVO-2025-07-002,"Ajuste no cálculo de Férias para considerar novo acordo coletivo",Evolutiva,15,1800,"Cálculo baseado em 15 PF * R$120/PF. Complexidade média, envolveu alteração de regras de negócio."
+EVO-2025-07-003,"Criação de relatório de servidores por lotação",Evolutiva,12,1440,"Cálculo baseado em 12 PF * R$120/PF. Complexidade baixa, apenas consulta e exibição."

@@ -1,0 +1,215 @@
+import logging
+from typing import Any, Dict
+
+from langchain_core.prompts import PromptTemplate
+from langchain_neo4j import GraphCypherQAChain
+
+from src.rag_sysrh.base_agent import BaseAgent
+
+# Configura o logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+
+class AgenteBI(BaseAgent):
+    """
+    Agente responsável por Business Intelligence e análise de dados.
+    Permite consultas em linguagem natural sobre o grafo (Text-to-Cypher).
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        try:
+            self.chain = self._build_chain()
+        except Exception as e:
+            logging.error(f"Falha ao construir chain do AgenteBI: {e}")
+            self.chain = None
+
+    def _build_chain(self) -> GraphCypherQAChain:
+        """
+        Constrói a cadeia GraphCypherQAChain para converter perguntas em Cypher.
+        """
+        cypher_generation_template = """Task:Generate Cypher statement to query a graph database.
+Instructions:
+Use only the provided relationship types and property keys.
+Do not use any other relationship types or property keys that are not provided.
+Schema:
+{schema}
+Note: Do not include any explanations or apologies in your responses.
+Do not respond to any questions that might ask anything else than for you to construct a Cypher statement.
+Do not include any text except the generated Cypher statement.
+Examples: Here are a few examples of generated Cypher statements for particular questions:
+
+# How many solicitations are there?
+MATCH (s:Solicitacao) RETURN count(s)
+
+# What are the solicitations with status 'Pendente'?
+MATCH (s:Solicitacao {status: 'Pendente'}) RETURN s.title
+
+The question is:
+{question}"""
+
+        cypher_prompt = PromptTemplate(
+            input_variables=["schema", "question"],
+            template=cypher_generation_template,
+        )
+
+        return GraphCypherQAChain.from_llm(
+            llm=self.llm,
+            graph=self.graph,
+            verbose=True,
+            cypher_prompt=cypher_prompt,
+            allow_dangerous_requests=True,  # Necessário para permitir execução de Cypher
+        )
+
+    def responder_pergunta(self, pergunta: str) -> Dict[str, Any]:
+        """
+        Responde a uma pergunta em linguagem natural sobre os dados.
+        Retorna um dicionário com a 'query' gerada e o 'result' final.
+        """
+        logging.info(f"AgenteBI recebendo pergunta: {pergunta}")
+        try:
+            # O GraphCypherQAChain retorna 'result' por padrão.
+            # Para obter a query intermediária, precisaríamos de return_intermediate_steps=True
+            # Vamos recriar a chain com essa opção se quisermos mostrar a query na UI.
+
+            # Reconstruindo temporariamente para garantir acesso aos passos intermediários
+            chain_with_steps = GraphCypherQAChain.from_llm(
+                llm=self.llm,
+                graph=self.graph,
+                verbose=True,
+                return_intermediate_steps=True,
+                allow_dangerous_requests=True,
+            )
+
+            response = chain_with_steps.invoke({"query": pergunta})
+
+            # response['intermediate_steps'] contém uma lista de tuplas/dicts.
+            # Geralmente: [{'query': 'MATCH ...'}, {'context': ...}]
+            # O formato exato depende da versão, mas geralmente o primeiro item é a query.
+
+            generated_cypher = "N/A"
+            if "intermediate_steps" in response:
+                steps = response["intermediate_steps"]
+                if steps and len(steps) > 0:
+                    # O primeiro passo costuma ser a query gerada
+                    first_step = steps[0]
+                    if isinstance(first_step, dict) and "query" in first_step:
+                        generated_cypher = first_step["query"]
+                    elif isinstance(first_step, str):
+                        generated_cypher = first_step
+
+            return {"resposta": response["result"], "cypher": generated_cypher}
+
+        except Exception as e:
+            logging.error(f"Erro ao processar pergunta no AgenteBI: {e}")
+            return {
+                "resposta": f"Desculpe, não consegui analisar os dados. Erro: {e}",
+                "cypher": "Erro na geração",
+            }
+
+    async def analisar_dados_json(self, dados: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analisa um conjunto de dados já extraídos e gera insights em formato JSON.
+        Usa um prompt detalhado para gerar um relatório executivo completo.
+        """
+        import json
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        prompt_system = """
+        Você é um Agente de Inteligência Artificial Especialista em Gestão Operacional e Financeira para equipes de desenvolvimento.
+        Seu papel é analisar indicadores, interpretar dados complexos e produzir relatórios executivos com insights de alto nível, claros, objetivos e acionáveis.
+        
+        🎯 Missão:
+        - Coletar, interpretar e correlacionar indicadores operacionais e financeiros.
+        - Identificar padrões, riscos, gargalos e oportunidades.
+        - Gerar relatórios estratégicos com recomendações objetivas.
+        - Transformar dados técnicos em informação executiva.
+
+        📊 Indicadores para Analisar:
+        1. Operacionais: Volume, Backlog, Esforço, Lead Time, Cycle Time, Throughput, Gargalos.
+        2. Financeiros: Faturamento, Margens, Rentabilidade, Ticket Médio, ROI, Riscos.
+
+        🧠 Como Analisar:
+        - Compare dados (tendências).
+        - Correlacione Operacional x Financeiro (ex: Aumento de Lead Time -> Queda de Margem).
+        - Identifique anomalias e gargalos.
+        - Relate riscos estratégicos (ex: Dependência de cliente, Contratos deficitários).
+
+        📝 Formato de Resposta (JSON ESTRITO):
+        Gere APENAS um JSON válido com a seguinte estrutura exata:
+        {
+            "sumario_executivo": {
+                "principais_achados": ["Achado 1", "Achado 2"],
+                "indicadores_criticos": ["Indicador 1", "Indicador 2"],
+                "oportunidades_ganho": ["Oportunidade 1"]
+            },
+            "analise_operacional": {
+                "produtividade": "Texto sobre produtividade...",
+                "eficiencia_fluxo": "Texto sobre fluxo e lead time...",
+                "qualidade_riscos": "Texto sobre qualidade e riscos..."
+            },
+            "analise_financeira": {
+                "receita_margens": "Texto sobre receita e margens...",
+                "rentabilidade_clientes": "Texto sobre rentabilidade...",
+                "riscos_financeiros": ["Risco 1", "Risco 2"]
+            },
+            "correlacao_op_fin": [
+                "Correlação 1 (ex: Atraso na entrega X custou Y)",
+                "Correlação 2"
+            ],
+            "insights_estrategicos": [
+                "Insight 1",
+                "Insight 2"
+            ],
+            "recomendacoes": [
+                { "titulo": "Ação P1", "descricao": "Descrição detalhada", "prioridade": "Alta", "prazo": "Curto Prazo" },
+                { "titulo": "Ação P2", "descricao": "Descrição detalhada", "prioridade": "Média", "prazo": "Médio Prazo" }
+            ],
+            "previsoes": {
+                "tendencias": ["Tendência 1", "Tendência 2"],
+                "riscos_futuros": ["Risco Futuro 1"]
+            }
+        }
+        """
+
+        prompt_user = f"""
+        Analise os seguintes dados do dashboard (Operacional e Financeiro):
+        {json.dumps(dados, indent=2, ensure_ascii=False)}
+        """
+
+        try:
+            response = await self.llm.ainvoke(
+                [
+                    SystemMessage(content=prompt_system),
+                    HumanMessage(content=prompt_user),
+                ]
+            )
+
+            texto_resposta = response.content
+
+            # Limpeza básica de markdown para garantir JSON válido
+            if "```json" in texto_resposta:
+                texto_resposta = texto_resposta.split("```json")[1].split("```")[0]
+            elif "```" in texto_resposta:
+                texto_resposta = texto_resposta.split("```")[1].split("```")[0]
+
+            return json.loads(texto_resposta)
+
+        except Exception as e:
+            logging.error(f"Erro na análise direta de JSON: {e}")
+            return {
+                "sumario_executivo": {
+                    "principais_achados": ["Erro ao gerar análise."],
+                    "indicadores_criticos": [],
+                    "oportunidades_ganho": []
+                },
+                "analise_operacional": {},
+                "analise_financeira": {},
+                "correlacao_op_fin": [],
+                "insights_estrategicos": [],
+                "recomendacoes": [],
+                "previsoes": {},
+                "erro": str(e)
+            }

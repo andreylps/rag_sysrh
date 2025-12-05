@@ -1,0 +1,18 @@
+[Unit]
+Description=Noesys AI Backend (FastAPI/Uvicorn)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/root/noesys_deploy/RAG_SYSRH/
+Environment="PATH=/root/noesys_deploy/RAG_SYSRH/venv/bin"
+ExecStart=/root/noesys_deploy/RAG_SYSRH/venv/bin/uvicorn src.api.main:app --host 0.0.0.0 --port 8080 --workers 4
+Restart=always
+RestartSec=5s
+StandardOutput=append:/var/log/noesys-backend.log
+StandardError=append:/var/log/noesys-backend.error.log
+
+[Install]
+WantedBy=multi-user.target
