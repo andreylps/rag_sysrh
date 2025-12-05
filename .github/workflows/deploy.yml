@@ -61,8 +61,7 @@ jobs:
               echo "✅ Clone inicial concluído com sucesso."
             fi
 
-            # --- A partir daqui, já estamos dentro da pasta correta ---
-
+            
            # --- A partir daqui, já estamos dentro da pasta correta ---
 
             echo "📦 Instalando/Atualizando dependências com uv..."
@@ -83,8 +82,8 @@ jobs:
 
             # Nota: Os comandos de systemd vão falhar agora porque o serviço 
             # ainda não foi criado. Vamos manter comentado por enquanto.
-            # echo "🔄 Reiniciando serviço Systemd..."
-            # sudo systemctl restart rag_sysrh.service
+            echo "🔄 Reiniciando serviço Systemd..."
+            sudo systemctl restart rag_sysrh.service
 
             echo "✅ Deploy concluído com sucesso! (Código e dependências prontos)"
           EOF
