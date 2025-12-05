@@ -1,4 +1,5 @@
 import React from "react";
+import { API_BASE_URL } from "../config";
 
 const HistoryTable = ({ issues, onIssueUpdate }) => {
   if (!issues || issues.length === 0) {
@@ -96,7 +97,7 @@ const HistoryTable = ({ issues, onIssueUpdate }) => {
                       ) {
                         try {
                           const response = await fetch(
-                            `http://localhost:8080/api/v1/review/${issue.number}/homologate`,
+                            `${API_BASE_URL}/review/${issue.number}/homologate`,
                             { method: "POST" }
                           );
                           if (response.ok) {

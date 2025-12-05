@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom"; // Para navegar para a tela de detalhes no futuro
+import { API_BASE_URL } from "../config";
 
 const ValidationBacklog = () => {
   const [issues, setIssues] = useState([]);
@@ -24,9 +25,7 @@ const ValidationBacklog = () => {
   const fetchHistory = async () => {
     setLoadingHistory(true);
     try {
-      const response = await fetch(
-        "http://localhost:8080/api/v1/validacao/history"
-      );
+      const response = await fetch(`${API_BASE_URL}/validacao/history`);
       if (!response.ok) throw new Error("Erro ao buscar histórico");
       const data = await response.json();
       setHistoryIssues(data);
@@ -47,9 +46,7 @@ const ValidationBacklog = () => {
     setLoading(true);
     try {
       // Chama o endpoint que acabamos de testar com sucesso
-      const response = await fetch(
-        "http://localhost:8080/api/v1/validacao/backlog"
-      );
+      const response = await fetch(`${API_BASE_URL}/validacao/backlog`);
 
       if (!response.ok) {
         throw new Error(`Erro na requisição: ${response.status}`);
@@ -142,7 +139,7 @@ const ValidationBacklog = () => {
 
       {/* --- CONTEÚDO DA ABA: HISTÓRICO --- */}
       {activeTab === "history" && (
-        <div className="flex-grow overflow-auto">
+        <div className="grow overflow-auto">
           {loadingHistory ? (
             <div className="flex justify-center items-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
@@ -399,6 +396,13 @@ const ValidationBacklog = () => {
                                 colorClass =
                                   "bg-red-900/50 text-red-300 border border-red-800 font-bold animate-pulse";
                                 label = "⚠️ Rejeitado pelo Cliente"; // Override text for clarity
+                              } else if (
+                                lowerLabel.includes("fast-track") ||
+                                lowerLabel.includes("liberacao-dev")
+                              ) {
+                                colorClass =
+                                  "bg-yellow-900/50 text-yellow-300 border border-yellow-800 font-medium";
+                                label = "⚡ Fast Track"; // Add icon for emphasis
                               }
 
                               return (

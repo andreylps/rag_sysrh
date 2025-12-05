@@ -20,30 +20,6 @@ const TechnicalWorkbench = () => {
   const [historyIssues, setHistoryIssues] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // --- MODO VISUALIZAÇÃO (REVIEW) ---
-  const [issueDetails, setIssueDetails] = useState(null);
-
-  useEffect(() => {
-    if (selectedIssueId) {
-      const fetchDetails = async () => {
-        try {
-          const response = await fetch(
-            `${API_BASE_URL}/review/${selectedIssueId}/details`
-          );
-          if (response.ok) {
-            const data = await response.json();
-            setIssueDetails(data);
-          }
-        } catch (error) {
-          console.error("Erro ao buscar detalhes da issue:", error);
-        }
-      };
-      fetchDetails();
-    } else {
-      setIssueDetails(null);
-    }
-  }, [selectedIssueId]);
-
   // Busca o histórico quando a aba é ativada
   useEffect(() => {
     if (activeTab === "history" && historyIssues.length === 0) {
@@ -80,10 +56,8 @@ const TechnicalWorkbench = () => {
         const data = await response.json();
 
         // Filtrar no frontend apenas por segurança, embora o backend deva mandar as certas
-        const techReviewIssues = data.filter(
-          (issue) =>
-            issue.labels.includes("status:aguardando-review-tecnico") ||
-            issue.labels.includes("status:aguardando-correcao-doc")
+        const techReviewIssues = data.filter((issue) =>
+          issue.labels.includes("status:aguardando-review-tecnico")
         );
 
         setIssues(techReviewIssues);
@@ -120,28 +94,6 @@ const TechnicalWorkbench = () => {
   }
 
   // --- MODO VISUALIZAÇÃO (REVIEW) ---
-
-  // Extrai o último comentário de falha de QA, se houver
-  const getQAFailureMessage = () => {
-    if (!issueDetails || !issueDetails.comments) return null;
-    // Procura do mais recente para o mais antigo
-    for (let i = issueDetails.comments.length - 1; i >= 0; i--) {
-      const comment = issueDetails.comments[i];
-      if (
-        comment.body &&
-        comment.body.includes("FALHA NA AUDITORIA DE QUALIDADE")
-      ) {
-        return comment.body;
-      }
-    }
-    return null;
-  };
-
-  const qaFailureMessage = getQAFailureMessage();
-  const isQABlocked = issueDetails?.labels?.includes(
-    "status:aguardando-correcao-doc"
-  );
-
   if (selectedIssueId) {
     return (
       <div className="page-content flex flex-col h-full">
@@ -163,38 +115,12 @@ const TechnicalWorkbench = () => {
           </button>
         </header>
 
-        <div className="grow flex flex-col space-y-6 overflow-y-auto">
-          {/* Alerta de Bloqueio de QA */}
-          {isQABlocked && qaFailureMessage && (
-            <div className="bg-red-900/20 border border-red-500/50 rounded-lg p-4 text-slate-300">
-              <h3 className="text-red-400 font-bold flex items-center mb-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5 mr-2"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Bloqueio de Qualidade (QA)
-              </h3>
-              <div className="prose prose-invert prose-sm max-w-none">
-                <pre className="whitespace-pre-wrap font-sans text-sm bg-transparent p-0 border-0 text-slate-300">
-                  {qaFailureMessage}
-                </pre>
-              </div>
-            </div>
-          )}
-
+        <div className="grow flex flex-col space-y-6">
           {/* Componente de Visualização de Código */}
           <CodeReviewViewer issueId={selectedIssueId} />
 
           {/* Ações de Aprovação */}
-          <div className="flex justify-end space-x-4 pt-4 border-t border-slate-800 pb-6">
+          <div className="flex justify-end space-x-4 pt-4 border-t border-slate-800">
             <button
               onClick={() =>
                 toast.info("Funcionalidade de rejeição em breve...")
@@ -203,131 +129,65 @@ const TechnicalWorkbench = () => {
             >
               Solicitar Correções
             </button>
-
-            {/* Botão de Bypass QA */}
-            {isQABlocked && (
-              <button
-                onClick={async () => {
-                  if (
-                    !window.confirm(
-                      "ATENÇÃO: Você está prestes a aprovar uma demanda que FALHOU na auditoria de qualidade.\n\nIsso ignorará os erros apontados e moverá a demanda para Homologação.\n\nDeseja continuar?"
-                    )
+            <button
+              onClick={async () => {
+                if (
+                  !window.confirm(
+                    "Tem certeza que deseja aprovar e implantar? A demanda será movida para Aceite de Homologação."
                   )
-                    return;
+                )
+                  return;
 
-                  const toastId = toast.loading("Processando Bypass de QA...");
-                  try {
-                    const response = await fetch(
-                      `${API_BASE_URL}/review/${selectedIssueId}/bypass-qa`,
-                      {
-                        method: "POST",
-                      }
-                    );
+                const toastId = toast.loading("Processando aprovação...");
+                try {
+                  const response = await fetch(
+                    `${API_BASE_URL}/review/${selectedIssueId}/deploy`,
+                    {
+                      method: "POST",
+                    }
+                  );
 
-                    if (!response.ok)
-                      throw new Error("Falha ao realizar bypass.");
+                  if (!response.ok) throw new Error("Falha na aprovação.");
 
-                    toast.update(toastId, {
-                      render: "⚠️ Bypass Realizado! Movido para Homologação.",
-                      type: "warning",
-                      isLoading: false,
-                      autoClose: 4000,
-                    });
+                  toast.update(toastId, {
+                    render: "✅ Aprovado! Demanda movida para Homologação.",
+                    type: "success",
+                    isLoading: false,
+                    autoClose: 3000,
+                  });
 
-                    setIssues((prev) =>
-                      prev.filter((i) => i.number !== selectedIssueId)
-                    );
-                    setSelectedIssueId(null);
-                  } catch (err) {
-                    console.error(err);
-                    toast.update(toastId, {
-                      render: "Erro ao realizar bypass.",
-                      type: "error",
-                      isLoading: false,
-                      autoClose: 3000,
-                    });
-                  }
-                }}
-                className="bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-6 rounded shadow transition-colors flex items-center"
-                title="Ignorar erros de QA e aprovar"
+                  // Remove a issue da lista local e volta para a tela inicial
+                  setIssues((prev) =>
+                    prev.filter((i) => i.number !== selectedIssueId)
+                  );
+                  setSelectedIssueId(null);
+                } catch (err) {
+                  console.error(err);
+                  toast.update(toastId, {
+                    render: "Erro ao realizar deploy.",
+                    type: "error",
+                    isLoading: false,
+                    autoClose: 3000,
+                  });
+                }
+              }}
+              className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow transition-colors flex items-center"
+            >
+              <svg
+                className="w-5 h-5 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5 mr-2"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Aprovar com Restrições (Bypass QA)
-              </button>
-            )}
-
-            {/* Botão Padrão de Aprovação (Desabilitado se bloqueado, ou escondido) */}
-            {!isQABlocked && (
-              <button
-                onClick={async () => {
-                  if (
-                    !window.confirm(
-                      "Tem certeza que deseja aprovar e implantar? A demanda será movida para Aceite de Homologação."
-                    )
-                  )
-                    return;
-
-                  const toastId = toast.loading("Processando aprovação...");
-                  try {
-                    const response = await fetch(
-                      `${API_BASE_URL}/review/${selectedIssueId}/deploy`,
-                      {
-                        method: "POST",
-                      }
-                    );
-
-                    if (!response.ok) throw new Error("Falha na aprovação.");
-
-                    toast.update(toastId, {
-                      render: "✅ Aprovado! Demanda movida para Homologação.",
-                      type: "success",
-                      isLoading: false,
-                      autoClose: 3000,
-                    });
-
-                    setIssues((prev) =>
-                      prev.filter((i) => i.number !== selectedIssueId)
-                    );
-                    setSelectedIssueId(null);
-                  } catch (err) {
-                    console.error(err);
-                    toast.update(toastId, {
-                      render: "Erro ao realizar deploy.",
-                      type: "error",
-                      isLoading: false,
-                      autoClose: 3000,
-                    });
-                  }
-                }}
-                className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded shadow transition-colors flex items-center"
-              >
-                <svg
-                  className="w-5 h-5 mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M5 13l4 4L19 7"
-                  ></path>
-                </svg>
-                Aprovar e Implantar
-              </button>
-            )}
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M5 13l4 4L19 7"
+                ></path>
+              </svg>
+              Aprovar e Implantar
+            </button>
 
             {/* Botão de Download Memória de Cálculo (Fase 6.3.2) */}
             <button

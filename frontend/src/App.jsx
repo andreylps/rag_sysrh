@@ -13,6 +13,7 @@ import Welcome from "./pages/Welcome"; // <--- Novo Import
 import "./App.css"; // Seus estilos globais
 import DashboardWrapper from "./DashboardWrapper";
 import TailwindWrapper from "./TailwindWrapper";
+import { WS_BASE_URL } from "./config";
 
 // --- IMPORTS PARA VALIDAÇÃO E NOTIFICAÇÕES ---
 import ValidationBacklog from "./pages/ValidationBacklog";
@@ -20,8 +21,10 @@ import ValidationWorkbench from "./pages/ValidationWorkbench";
 import ClientApproval from "./pages/ClientApproval";
 import TechnicalWorkbench from "./pages/TechnicalWorkbench";
 import QualityControlRoom from "./pages/QualityControlRoom"; // <--- NOVO IMPORT (Fase 6.1)
-import ScrumControlRoom from "./pages/ScrumControlRoom"; // <--- NOVO IMPORT (Fase SM.3)
+import ScrumRoom from "./pages/ScrumRoom"; // <--- NOVO IMPORT (Fase SM.3)
 import DocumentationPage from "./pages/DocumentationPage"; // <--- NOVO IMPORT (Fase 6.8.2)
+import POCGenerator from "./pages/POCGenerator"; // <--- NOVO IMPORT (POC Agent)
+import CommercialRoom from "./pages/CommercialRoom"; // <--- NOVO IMPORT (Sala Comercial)
 import Chat from "./pages/Chat";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css"; // Não se esqueça de importar o CSS!
@@ -44,7 +47,7 @@ function App() {
   // --- GLOBAL WEBSOCKET FOR SYSTEM NOTIFICATIONS ---
   useEffect(() => {
     const connectWebSocket = () => {
-      const wsUrl = "ws://127.0.0.1:8080/api/v1/chat/ws";
+      const wsUrl = `${WS_BASE_URL}/chat/ws`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -112,6 +115,14 @@ function App() {
               element={
                 <TailwindWrapper>
                   <Documentation />
+                </TailwindWrapper>
+              }
+            />
+            <Route
+              path="/poc-generator"
+              element={
+                <TailwindWrapper>
+                  <POCGenerator />
                 </TailwindWrapper>
               }
             />
@@ -188,7 +199,7 @@ function App() {
                   path="/scrum-room" // Fase SM.3
                   element={
                     <TailwindWrapper>
-                      <ScrumControlRoom />
+                      <ScrumRoom />
                     </TailwindWrapper>
                   }
                 />
@@ -197,6 +208,14 @@ function App() {
                   element={
                     <TailwindWrapper>
                       <Knowledge />
+                    </TailwindWrapper>
+                  }
+                />
+                <Route
+                  path="/commercial-room"
+                  element={
+                    <TailwindWrapper>
+                      <CommercialRoom />
                     </TailwindWrapper>
                   }
                 />

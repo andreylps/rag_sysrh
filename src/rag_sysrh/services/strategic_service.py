@@ -1,21 +1,20 @@
 import logging
-from typing import Any, Dict
+from typing import Any
 
-from rag_sysrh.agents.strategic_manager import StrategicManagerAgent
+from src.rag_sysrh.agents.strategic_manager import StrategicManagerAgent
+from src.rag_sysrh.services.strategic_data_service import StrategicDataService
 
 logger = logging.getLogger(__name__)
 
 
 class StrategicService:
-    def __init__(self):
-        from src.rag_sysrh.services.strategic_data_service import StrategicDataService
-
+    def __init__(self) -> None:
         self.agent = StrategicManagerAgent()
         self.data_service = StrategicDataService()
 
     def analyze(
         self, period: str = "30d", team: str = "Todos", client: str = "Todos"
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Realiza a análise estratégica completa.
         """

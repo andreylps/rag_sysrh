@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { API_BASE_URL } from "../config";
 
 const Documentation = () => {
   const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ const Documentation = () => {
 
     try {
       const response = await fetch(
-        "http://localhost:8080/api/v1/documents/generate",
+        `${API_BASE_URL}/documents/generate`,
         {
           method: "POST",
           headers: {
@@ -54,7 +55,7 @@ const Documentation = () => {
     try {
       // Codifica o path para passar na URL query string
       const encodedPath = encodeURIComponent(path);
-      const url = `http://localhost:8080/api/v1/documents/download?path=${encodedPath}`;
+      const url = `${API_BASE_URL}/documents/download?path=${encodedPath}`;
 
       // Abre em nova aba para iniciar download
       window.open(url, "_blank");

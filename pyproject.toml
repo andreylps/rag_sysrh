@@ -1,52 +1,128 @@
 [project]
 name = "rag_sysrh"
-version = "0.1.0"
-description = "Assistente de Conhecimento SYSRH com RAG e Agentes Autônomos."
-authors = [{ name = "Seu Nome", email = "seu@email.com" }]
-requires-python = ">=3.11"
+version = "0.0.1"
+description = "rag_sysrh"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Andrey Lopes" }]
+requires-python = ">=3.13"
 
 dependencies = [
-    # Core application framework
-    "streamlit",
-    "protobuf<5", # Fixado para compatibilidade com streamlit
-    # LangChain Stack (Moderna)
-    "langchain", # Pacote principal (inclui Memory, Chains)
-    "langchain-core", # Abstrações base
-    "langchain-community", # Integrações de terceiros
-    "langchain-openai", # Integração OpenAI
-    "langchain-neo4j", # Integração Neo4j
-    "langchain-text-splitters", # Para RecursiveCharacterTextSplitter
-    "langsmith", # Observabilidade e Avaliação
-    "langgraph", # Orquestração de Agentes
-    # Data handling and analysis
-    "pandas",
-    "altair",
-    "ftfy",
-    "python-dateutil",
-    "openpyxl", # Necessário para pandas ler Excel (.xlsx)
-    # Document loaders & Environment
-    "pypdf",
-    "docx2txt",
-    "python-docx",
-    "unstructured[xlsx]",
-    "python-dotenv",
-    # Core agent dependencies
-    "neo4j",
-    "openai",
-    "pydantic",
-    "guardrails-ai",
-    "uvicorn",
-    "fastapi",
-    "python-multipart",
-    "PyGithub",
-    "watchdog",
-    "duckduckgo-search",
-    "langchain-google-genai>=3.2.0",
-    "apscheduler>=3.11.1",
-    "reportlab>=4.4.5",
+    # Lista consolidada para resolver conflitos
+    # LangChain Core
+    "langchain-core>=0.1.0",
+    "langchain-community>=0.4.1",
+    "langchain-openai>=1.0.1",
+    "langchain-pinecone>=0.1.0",
+    "langchain-neo4j>=0.1.0", # Adicionado para integração com Neo4j
+    "langchain>=1.0.0",
+    "langgraph>=1.0.1",
+    "neo4j>=5.0.0", # Adicionado explicitamente para garantir a instalação
+    "langgraph-cli[inmem]>=0.4.2",
+    # ✅ CORREÇÃO: Adiciona os pacotes modulares do LangChain que faltavam.
+    "langchain-chroma",
+    "langchain-huggingface",
+    # LLM & Vector
+    "openai>=1.0.0",
+    "tiktoken",
+    "pinecone>=6.0.0",
+    "chromadb>=1.3.2",
+    "rank-bm25>=0.2.2",
+    # Document Processing
+    "pymupdf>=1.26.5",
+    "python-docx>=1.2.0",
+    "docx2txt>=0.8",
+    "pdfplumber>=0.11.7",
+    "beautifulsoup4>=4.14.2",
+    "pypdf2>=3.0.1",
+    "pdf2image>=1.17.0", # Dependência para OCR
+    "pytesseract", # Dependência para OCR
+    # Utilities
+    "python-dotenv==1.0.1",
+    "rich>=14.1.0",
+    "pydantic>=2.12.3",
+    "tqdm>=4.67.1",
+    "diskcache>=5.6.3",
+    "sentence-transformers>=5.1.2",
+    "numpy>=2.3.4",
+    "scikit-learn>=1.7.2",
+    "torch>=2.9.0",
+    "streamlit>=1.51.0",
+    "pandas>=2.3.3",
+    "plotly>=6.4.0",
+    "tavily-python",
+    "fastapi>=0.121.0",
+    "uvicorn[standard]>=0.38.0",
+    "xlrd>=2.0.2",
+    "google-search-results>=2.4.2",
+    "langchain-google-genai>=3.0.2",
+    "google-api-python-client>=2.187.0",
+    "altair>=5.5.0",
+    "pytest>=9.0.1",
 ]
 
+[project.urls]
+Homepage = "https://www.perceptonIA.com.br/"
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+fix = true
+show-fixes = true
+indent-width = 4
+exclude = [".venv"]
+
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  "T201",   # Checks for print statements, 
+  "COM812", # Checks for the absence of trailing commas.
+  "INP001", # Checks for packages that are missing an __init__.py file.
+  "D",      # All pydocstyle (D)
+  "ANN401", # Checks that function arguments are annotated with a more specific type than Any.
+  "ERA001", # Checks for commented-out Python code.
+  "A004",   # Shadowing Python Builtin
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["ANN201", "S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ruff.lint.isort]
+known-first-party = ["rag_sysrh"]
+
+[tool.pyright]
+typeCheckingMode = "standard"
+pythonVersion = "3.13"
+include = ["src", "tests"]
+exclude = [
+  "**/venv",
+  "**/.venv",
+  "**/env",
+  "**/.env",
+  "**/node_modules",
+  "**/__pycache__",
+]
+venv = ".venv"
+venvPath = "."
+executionEnvironments = [{ root = "src" }]
+
+[tool.pytest.ini_options]
+addopts = "-s --color=yes --tb=short"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.setuptools]
-# Isso informa ao setuptools para procurar pacotes dentro do diretório 'src'
-package-dir = {"" = "src"}
-packages = ["rag_sysrh"]
+package-dir = { "" = "src" }

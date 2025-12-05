@@ -1,18 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
-import {
-  TrendingUp,
-  TrendingDown,
-  Activity,
-  AlertCircle,
-  RefreshCw,
-  Filter,
-  BarChart3,
-  Brain,
-  DollarSign,
-  XCircle,
-  Clock,
-  Check,
-} from "lucide-react";
+import React, { useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -23,860 +9,894 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Area,
-  AreaChart,
   PieChart,
   Pie,
   Cell,
   Legend,
 } from "recharts";
-import OperationalOverview from "../components/OperationalOverview"; // Importação Segura
+import {
+  LayoutDashboard,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Users,
+  Target,
+  Briefcase,
+  Activity,
+  DollarSign,
+  PieChart as PieChartIcon,
+  BarChart2,
+  Calendar,
+  Filter,
+  RefreshCw,
+  Zap,
+  Layers,
+  ArrowUpRight,
+  ArrowDownRight,
+  HardDrive,
+} from "lucide-react";
+import { API_BASE_URL } from "../config";
+import AnalysisTab from "../components/AnalysisTab";
 
-// --- Componentes Utilitários (Gauge e MetricCard) ---
-// (Mantidos exatamente iguais. Sem alterações necessárias aqui.)
-const GaugeChart = ({ value, max = 100, title, color }) => {
-  const percentage = (value / max) * 100;
-  const rotation = (percentage / 100) * 180 - 90;
-  const getColor = (val) => {
-    if (val >= 100) return "#10b981";
-    if (val >= 50) return "#10b981";
-    return "#ef4444";
-  };
-  const gaugeColor = color || getColor(value);
-  return (
-    <div className="flex flex-col items-center justify-center h-full">
-      <div className="relative w-40 h-20 overflow-hidden">
-        <svg viewBox="0 0 200 100" className="w-full h-full">
-          <path
-            d="M 20 90 A 80 80 0 0 1 180 90"
-            fill="none"
-            stroke="#1e293b"
-            strokeWidth="20"
-            strokeLinecap="round"
-          />
-          <path
-            d="M 20 90 A 80 80 0 0 1 180 90"
-            fill="none"
-            stroke={gaugeColor}
-            strokeWidth="20"
-            strokeLinecap="round"
-            strokeDasharray={`${percentage * 2.51} 251`}
-          />
-          <circle cx="100" cy="90" r="6" fill="#94a3b8" />
-          <line
-            x1="100"
-            y1="90"
-            x2="100"
-            y2="30"
-            stroke="#f8fafc"
-            strokeWidth="3"
-            strokeLinecap="round"
-            transform={`rotate(${rotation} 100 90)`}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-end justify-center pb-2">
-          <span className="text-2xl font-bold" style={{ color: gaugeColor }}>
-            {/* Adicionado verificação para evitar erro se value for nulo/indefinido antes dos dados chegarem */}
-            {value?.toFixed(2)}%
-          </span>
-        </div>
-      </div>
-      <span className="text-xs text-slate-400 mt-2">{title}</span>
-    </div>
-  );
+// Cores do tema (Dark Mode)
+const COLORS = {
+  primary: "#818cf8", // Indigo-400
+  secondary: "#a78bfa", // Violet-400
+  success: "#34d399", // Emerald-400
+  warning: "#fbbf24", // Amber-400
+  danger: "#f87171", // Red-400
+  info: "#22d3ee", // Cyan-400
+  dark: "#0f172a", // Slate-900
+  light: "#f8fafc", // Slate-50
+  chart: [
+    "#818cf8", // Indigo
+    "#34d399", // Emerald
+    "#fbbf24", // Amber
+    "#f87171", // Red
+    "#a78bfa", // Violet
+    "#f472b6", // Pink
+    "#22d3ee", // Cyan
+    "#2dd4bf", // Teal
+  ],
 };
 
-const MetricCard = ({
-  title,
-  value,
-  unit,
-  change,
-  trend,
-  icon: Icon,
-  colorFrom = "from-cyan-600",
-  colorTo = "to-cyan-700",
-  iconColor = "text-cyan-200",
-  textColor = "text-cyan-100",
-}) => (
-  <div
-    className={`bg-gradient-to-br ${colorFrom} ${colorTo} rounded-lg p-4 shadow-lg`}
-  >
-    <div className="flex items-start justify-between mb-2">
-      <span className={`text-sm ${textColor}`}>{title}</span>
-      {Icon && <Icon className={`w-5 h-5 ${iconColor}`} />}
-    </div>
-    <div className="flex items-baseline gap-2">
-      <span className="text-3xl font-bold text-white">{value}</span>
-      <span className={`text-lg ${textColor}`}>{unit}</span>
-    </div>
-    {change && (
-      <div className="flex items-center gap-1 mt-2">
-        {trend === "up" ? (
-          <TrendingUp className="w-4 h-4 text-green-300" />
-        ) : (
-          <TrendingDown className="w-4 h-4 text-red-300" />
-        )}
-        <span
-          className={`text-sm ${
-            trend === "up" ? "text-green-300" : "text-red-300"
-          }`}
-        >
-          {change}
-        </span>
-      </div>
-    )}
-  </div>
-);
-
-// --- Conteúdo das Abas (Produção, Faturamento, IA) ---
-// (Estes componentes são apenas para exibição e não mudam. Eles recebem os dados e os mostram.)
-const ProductionContent = ({ data }) => (
-  <div className="grid grid-cols-12 gap-4">
-    <div className="col-span-3 bg-slate-900 rounded-lg p-6 border border-slate-800">
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-white mb-1">OEE</h2>
-        <p className="text-xs text-slate-400">
-          Overall Equipment Effectiveness
-        </p>
-      </div>
-      <div className="relative mb-6 h-32">
-        <svg viewBox="0 0 200 120" className="w-full h-full">
-          <defs>
-            <linearGradient id="oeeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#10b981" />
-              <stop offset="100%" stopColor="#059669" />
-            </linearGradient>
-          </defs>
-          <path
-            d="M 20 100 A 80 80 0 0 1 180 100"
-            fill="none"
-            stroke="#1e293b"
-            strokeWidth="20"
-            strokeLinecap="round"
-          />
-          <path
-            d="M 20 100 A 80 80 0 0 1 180 100"
-            fill="none"
-            stroke={data.oee >= 50 ? "url(#oeeGradient)" : "#ef4444"}
-            strokeWidth="20"
-            strokeLinecap="round"
-            strokeDasharray={`${data.oee * 2.51} 251`}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center pt-6">
-          <span
-            className="text-2xl font-bold"
-            style={{ color: data.oee >= 50 ? "#10b981" : "#ef4444" }}
-          >
-            {data.oee?.toFixed(2)}%
-          </span>
-        </div>
-      </div>
-      <div className="flex justify-between text-xs text-slate-500 mb-6">
-        <span>0,00%</span>
-        <span>100,00%</span>
-      </div>
-      <ResponsiveContainer width="100%" height={60}>
-        <AreaChart data={data.oeeHistory}>
-          <defs>
-            <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke="#06b6d4"
-            fill="url(#areaGradient)"
-            strokeWidth={2}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-    <div className="col-span-6 grid grid-cols-3 gap-4">
-      <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-        <div className="mb-2">
-          <h3 className="text-sm font-semibold text-white">Disponibilidade</h3>
-        </div>
-        <GaugeChart value={data.availability} title="" color="#f97316" />
-        <ResponsiveContainer width="100%" height={50}>
-          <AreaChart data={data.availabilityHistory || []}>
-            <Area
-              type="monotone"
-              dataKey="v"
-              stroke="#f97316"
-              fill="#f9731633"
-              strokeWidth={1.5}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-        <div className="mb-2">
-          <h3 className="text-sm font-semibold text-white">Performance</h3>
-        </div>
-        <GaugeChart value={data.performance} title="" color="#3b82f6" />
-        <ResponsiveContainer width="100%" height={50}>
-          <AreaChart data={data.performanceHistory || []}>
-            <Area
-              type="monotone"
-              dataKey="v"
-              stroke="#3b82f6"
-              fill="#3b82f633"
-              strokeWidth={1.5}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-      <div className="bg-slate-900 rounded-lg p-4 border border-slate-800">
-        <div className="mb-2">
-          <h3 className="text-sm font-semibold text-white">Qualidade</h3>
-        </div>
-        <GaugeChart value={data.quality} title="" color="#f97316" />
-        <ResponsiveContainer width="100%" height={50}>
-          <AreaChart data={data.qualityHistory || []}>
-            <Area
-              type="monotone"
-              dataKey="v"
-              stroke="#f97316"
-              fill="#f9731633"
-              strokeWidth={1.5}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-    <div className="col-span-3 grid grid-cols-1 gap-4">
-      <MetricCard
-        title="Qtd Planejada"
-        value={data.qtdPlanejada}
-        unit={data.qtdPlanejadaUnit}
-        icon={Activity}
-      />
-      <MetricCard
-        title="Qtd Produzida"
-        value={data.qtdProduzida}
-        unit={data.qtdProduzidaUnit}
-        trend={data.qtdProduzidaTrend}
-        change={data.qtdProduzidaChange}
-      />
-      <MetricCard
-        title="Qtd Rejeitada"
-        value={data.qtdRejeitada}
-        unit={data.qtdRejeitadaUnit}
-        trend={data.qtdRejeitadaTrend}
-        change={data.qtdRejeitadaChange}
-        icon={AlertCircle}
-      />
-    </div>
-    <div className="col-span-9 bg-slate-900 rounded-lg p-6 border border-slate-800">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-lg font-semibold text-white">
-            Produção ao longo do tempo
-          </h3>
-        </div>
-      </div>
-      <ResponsiveContainer width="100%" height={280}>
-        <AreaChart data={data.productionOverTime}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#334155"
-            vertical={false}
-          />
-          <XAxis dataKey="month" stroke="#64748b" fontSize={11} />
-          <YAxis stroke="#64748b" fontSize={11} />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#1e293b",
-              border: "1px solid #334155",
-              borderRadius: "8px",
-            }}
-            labelStyle={{ color: "#f8fafc" }}
-          />
-          <Area
-            type="monotone"
-            dataKey="value"
-            stroke="#f8fafc"
-            fill="#f8fafc"
-            fillOpacity={0.8}
-            strokeWidth={2}
-          />
-          <Line
-            type="monotone"
-            dataKey="target"
-            stroke="#64748b"
-            strokeWidth={2}
-            strokeDasharray="5 5"
-            dot={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
-    <div className="col-span-3 bg-slate-900 rounded-lg p-6 border border-slate-800">
-      <h3 className="text-lg font-semibold text-white mb-4">
-        Ranking Rejeições
-      </h3>
-      <div className="space-y-3 max-h-80 overflow-y-auto">
-        {data.rejectionRanking.map((item, index) => (
-          <div key={index} className="flex items-center gap-3">
-            <div className="flex-1">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-slate-300">{item.name}</span>
-                <span className="text-xs font-semibold text-white">
-                  {item.formattedValue}
-                </span>
-              </div>
-              <div className="h-6 bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-orange-500 to-orange-600 flex items-center justify-end pr-2"
-                  style={{ width: `${item.percentage}%` }}
-                ></div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-    <div className="col-span-9 bg-slate-900 rounded-lg p-6 border border-slate-800">
-      <h3 className="text-lg font-semibold text-white mb-4">
-        Ranking Ocorrências
-      </h3>
-      <ResponsiveContainer width="100%" height={250}>
-        <BarChart data={data.occurrencesRanking} layout="vertical">
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#334155"
-            horizontal={false}
-          />
-          <XAxis type="number" stroke="#64748b" fontSize={11} />
-          <YAxis
-            dataKey="name"
-            type="category"
-            stroke="#64748b"
-            fontSize={11}
-            width={150}
-          />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#1e293b",
-              border: "1px solid #334155",
-              borderRadius: "8px",
-            }}
-            labelStyle={{ color: "#f8fafc" }}
-          />
-          <Bar dataKey="value" fill="#f97316" radius={[0, 8, 8, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-  </div>
-);
-
-const FaturamentoContent = ({ data }) => (
-  <div className="grid grid-cols-12 gap-4">
-    <div className="col-span-4 grid grid-cols-1 gap-4">
-      <MetricCard
-        title="Receita Total"
-        value={data.receitaTotal}
-        unit={data.receitaTotalUnit}
-        icon={DollarSign}
-        trend={data.receitaTotalTrend}
-        change={data.receitaTotalChange}
-        colorFrom="from-emerald-600"
-        colorTo="to-emerald-700"
-        iconColor="text-emerald-200"
-        textColor="text-emerald-100"
-      />
-      <MetricCard
-        title="Custo Operacional"
-        value={data.custoOperacional}
-        unit={data.custoOperacionalUnit}
-        icon={Activity}
-        trend={data.custoOperacionalTrend}
-        change={data.custoOperacionalChange}
-        colorFrom="from-rose-600"
-        colorTo="to-rose-700"
-        iconColor="text-rose-200"
-        textColor="text-rose-100"
-      />
-      <MetricCard
-        title="Lucro Líquido"
-        value={data.lucroLiquido}
-        unit={data.lucroLiquidoUnit}
-        icon={TrendingUp}
-        trend={data.lucroLiquidoTrend}
-        change={data.lucroLiquidoChange}
-        colorFrom="from-blue-600"
-        colorTo="to-blue-700"
-        iconColor="text-blue-200"
-        textColor="text-blue-100"
-      />
-    </div>
-    <div className="col-span-8 bg-slate-900 rounded-lg p-6 border border-slate-800">
-      <h3 className="text-lg font-semibold text-white mb-4">
-        Evolução Financeira
-      </h3>
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data.evolucaoFinanceira}>
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="#334155"
-            vertical={false}
-          />
-          <XAxis dataKey="month" stroke="#64748b" fontSize={11} />
-          <YAxis stroke="#64748b" fontSize={11} />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#1e293b",
-              border: "1px solid #334155",
-              borderRadius: "8px",
-            }}
-            labelStyle={{ color: "#f8fafc" }}
-          />
-          <Legend wrapperStyle={{ paddingTop: "10px" }} />
-          <Bar
-            dataKey="receita"
-            name="Receita"
-            fill="#10b981"
-            radius={[4, 4, 0, 0]}
-          />
-          <Bar
-            dataKey="custo"
-            name="Custo"
-            fill="#ef4444"
-            radius={[4, 4, 0, 0]}
-          />
-          <Bar
-            dataKey="lucro"
-            name="Lucro"
-            fill="#3b82f6"
-            radius={[4, 4, 0, 0]}
-          />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
-    <div className="col-span-5 bg-slate-900 rounded-lg p-6 border border-slate-800">
-      <h3 className="text-lg font-semibold text-white mb-4">
-        Composição de Custos
-      </h3>
-      <ResponsiveContainer width="100%" height={250}>
-        <PieChart>
-          <Pie
-            data={data.composicaoCustos}
-            cx="50%"
-            cy="50%"
-            innerRadius={60}
-            outerRadius={80}
-            fill="#8884d8"
-            paddingAngle={5}
-            dataKey="value"
-            nameKey="name"
-            label
-          >
-            {data.composicaoCustos.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={entry.color} />
-            ))}
-          </Pie>
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "#1e293b",
-              border: "1px solid #334155",
-              borderRadius: "8px",
-            }}
-            itemStyle={{ color: "#f8fafc" }}
-          />
-          <Legend layout="vertical" align="right" verticalAlign="middle" />
-        </PieChart>
-      </ResponsiveContainer>
-    </div>
-    <div className="col-span-7 bg-slate-900 rounded-lg p-6 border border-slate-800">
-      <h3 className="text-lg font-semibold text-white mb-4">
-        Top Clientes por Receita
-      </h3>
-      <div className="space-y-4">
-        {data.topClientes.map((cliente, index) => (
-          <div
-            key={index}
-            className="flex items-center justify-between border-b border-slate-800 pb-2"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-slate-800 rounded-full flex items-center justify-center font-bold text-slate-300">
-                {index + 1}
-              </div>
-              <span className="text-slate-200 font-medium">{cliente.name}</span>
-            </div>
-            <span className="text-emerald-400 font-bold">
-              {cliente.formattedValue}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  </div>
-);
-
-const AnaliseIAContent = ({ data }) => (
-  <div className="grid grid-cols-12 gap-4">
-    <div className="col-span-8 bg-slate-900 rounded-lg p-8 border border-slate-800">
-      <div className="flex items-center gap-3 mb-6">
-        <Brain className="w-8 h-8 text-purple-400" />
-        <h2 className="text-2xl font-bold text-white">
-          Relatório de Inteligência Artificial
-        </h2>
-      </div>
-      <div className="prose prose-invert max-w-none">
-        <h3 className="text-xl font-semibold text-purple-300 mb-3">
-          Resumo Executivo
-        </h3>
-        <p className="text-slate-300 leading-relaxed mb-6">{data.resumo}</p>
-        <h3 className="text-xl font-semibold text-blue-300 mb-3">
-          Análise de Produção
-        </h3>
-        <ul className="list-disc pl-5 space-y-2 text-slate-300 mb-6">
-          {data.analiseProducao.pontosFortes.map((ponto, i) => (
-            <li key={i} className="marker:text-green-400">
-              <span className="font-semibold text-green-400">Ponto Forte:</span>{" "}
-              {ponto}
-            </li>
-          ))}
-          {data.analiseProducao.atencao.map((ponto, i) => (
-            <li key={i} className="marker:text-yellow-400">
-              <span className="font-semibold text-yellow-400">Atenção:</span>{" "}
-              {ponto}
-            </li>
-          ))}
-        </ul>
-        <h3 className="text-xl font-semibold text-emerald-300 mb-3">
-          Análise Financeira
-        </h3>
-        <ul className="list-disc pl-5 space-y-2 text-slate-300 mb-6">
-          {data.analiseFinanceira.insights.map((insight, i) => (
-            <li key={i}>
-              <span className="font-semibold text-emerald-400">Insight:</span>{" "}
-              {insight}
-            </li>
-          ))}
-        </ul>
-        <h3 className="text-xl font-semibold text-red-300 mb-3">
-          Recomendações Estratégicas
-        </h3>
-        <div className="space-y-4">
-          {data.recomendacoes.map((rec, i) => (
-            <div
-              key={i}
-              className="bg-slate-800/50 p-4 rounded-lg border-l-4 border-purple-500"
-            >
-              <h4 className="font-semibold text-white mb-1">{rec.titulo}</h4>
-              <p className="text-sm text-slate-400">{rec.descricao}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-    <div className="col-span-4 space-y-4">
-      <div className="bg-slate-900 rounded-lg p-6 border border-slate-800">
-        <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <AlertCircle className="w-5 h-5 text-yellow-400" />
-          Alertas Críticos
-        </h3>
-        <div className="space-y-3">
-          {data.alertas.map((alerta, i) => (
-            <div
-              key={i}
-              className="flex items-start gap-3 bg-slate-800 p-3 rounded-md"
-            >
-              {alerta.tipo === "erro" ? (
-                <XCircle className="w-5 h-5 text-red-400 mt-0.5" />
-              ) : (
-                <Clock className="w-5 h-5 text-yellow-400 mt-0.5" />
-              )}
-              <div>
-                <p className="text-sm font-medium text-white">
-                  {alerta.titulo}
-                </p>
-                <p className="text-xs text-slate-400">{alerta.descricao}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="bg-slate-900 rounded-lg p-6 border border-slate-800 bg-gradient-to-br from-slate-900 to-purple-900/30">
-        <h3 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
-          <Brain className="w-5 h-5 text-purple-300" />
-          Previsão de IA
-        </h3>
-        <p className="text-sm text-slate-300 mb-4">
-          Com base nos dados atuais, a IA projeta para o próximo mês:
-        </p>
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-slate-400">
-              {data.previsao.metrica1Label}
-            </span>
-            <span className="text-lg font-bold text-green-400">
-              {data.previsao.metrica1Value}
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-slate-400">
-              {data.previsao.metrica2Label}
-            </span>
-            <span className="text-lg font-bold text-emerald-400">
-              {data.previsao.metrica2Value}
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-// --- Componente Principal do Dashboard ---
 const Dashboard = () => {
-  // Estados para os dados de cada aba
-  const [producaoData, setProducaoData] = useState(null);
-  const [faturamentoData, setFaturamentoData] = useState(null);
-  const [analiseIaData, setAnaliseIaData] = useState(null);
-
-  // Estados de controle da interface
+  const [activeTab, setActiveTab] = useState("operations"); // operations | billing | analysis
+  const [selectedPeriod, setSelectedPeriod] = useState("30");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null); // Novo estado de erro
-  const [activeTab, setActiveTab] = useState("producao");
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [selectedPeriod, setSelectedPeriod] = useState("Últimos 30 dias");
+  const [error, setError] = useState(null);
+  const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  const periodOptions = [
-    "Hoje",
-    "Últimos 7 dias",
-    "Últimos 30 dias",
-    "Este Mês",
-    "Último Trimestre",
-  ];
+  // Estado unificado para os dados de operações (7 painéis)
+  const [opsData, setOpsData] = useState(null);
 
-  // Função principal para buscar os dados reais da API
-  const fetchDashboardData = useCallback(async (period) => {
+  // Estado para dados financeiros
+  const [billingData, setBillingData] = useState(null);
+
+  const fetchDashboardData = async () => {
     setLoading(true);
-    setError(null); // Limpa erro anterior
+    setError(null);
     try {
-      console.log("Iniciando fetchDashboardData para o período:", period);
-
-      // 1. Chamada para Dados de Produção
-      const prodResponse = await fetch(
-        `http://127.0.0.1:8080/api/v1/dashboard/production?period=${period}`
+      // 1. Fetch Operations Data
+      const opsResponse = await fetch(
+        `${API_BASE_URL}/dashboard/production?days=${selectedPeriod}`
       );
-      if (!prodResponse.ok) {
-        throw new Error(
-          `Erro API Produção: ${prodResponse.status} ${prodResponse.statusText}`
-        );
-      }
-      const prodData = await prodResponse.json();
-      setProducaoData(prodData);
+      if (!opsResponse.ok) throw new Error("Erro ao buscar dados de operação");
+      const opsJson = await opsResponse.json();
+      setOpsData(opsJson);
 
-      // 2. Chamada para Dados de Faturamento
-      const billingResponse = await fetch(
-        `http://127.0.0.1:8080/api/v1/dashboard/billing?period=${period}`
-      );
-      if (!billingResponse.ok) {
-        throw new Error(
-          `Erro API Faturamento: ${billingResponse.status} ${billingResponse.statusText}`
+      // 2. Fetch Billing Data (Se necessário)
+      if (activeTab === "billing" || activeTab === "analysis") {
+        const billResponse = await fetch(
+          `${API_BASE_URL}/dashboard/billing?days=${selectedPeriod}`
         );
+        if (!billResponse.ok)
+          throw new Error("Erro ao buscar dados financeiros");
+        const billJson = await billResponse.json();
+        setBillingData(billJson);
       }
-      const billingData = await billingResponse.json();
-      setFaturamentoData(billingData);
 
-      // 3. Chamada para Dados de Análise IA
-      const analysisResponse = await fetch(
-        "http://127.0.0.1:8080/api/v1/dashboard/analysis",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ period: period }),
-        }
-      );
-      if (!analysisResponse.ok) {
-        throw new Error(
-          `Erro API Análise: ${analysisResponse.status} ${analysisResponse.statusText}`
-        );
-      }
-      const analysisData = await analysisResponse.json();
-      setAnaliseIaData(analysisData);
+      setLastUpdate(new Date());
     } catch (err) {
-      console.error("Erro ao buscar dados do dashboard:", err);
-      setError(err.message); // Define a mensagem de erro para exibir na tela
+      console.error("Erro no dashboard:", err);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
-  // Efeito para carregar dados na montagem inicial
   useEffect(() => {
-    fetchDashboardData(selectedPeriod);
-  }, [fetchDashboardData, selectedPeriod]);
+    fetchDashboardData();
+  }, [activeTab, selectedPeriod]);
 
-  // Função para lidar com o clique no Refresh
-  const handleRefresh = () => {
-    fetchDashboardData(selectedPeriod);
-  };
+  // --- COMPONENTES DE UI (DARK MODE) ---
 
-  // Função para lidar com a seleção do Filtro
-  const handleFilterSelect = (period) => {
-    setSelectedPeriod(period);
-    setIsFilterOpen(false);
-    // O useEffect acima já vai disparar o fetchDashboardData quando selectedPeriod mudar
-  };
+  const StatCard = ({
+    title,
+    value,
+    subtext,
+    icon: Icon,
+    trend,
+    color = "primary",
+  }) => {
+    // Mapeamento de cores para classes Tailwind (Dark Mode)
+    const colorClasses = {
+      blue: "bg-blue-900/30 text-blue-400 border-blue-800/50",
+      green: "bg-emerald-900/30 text-emerald-400 border-emerald-800/50",
+      violet: "bg-violet-900/30 text-violet-400 border-violet-800/50",
+      orange: "bg-amber-900/30 text-amber-400 border-amber-800/50",
+      red: "bg-red-900/30 text-red-400 border-red-800/50",
+      primary: "bg-indigo-900/30 text-indigo-400 border-indigo-800/50",
+    };
 
-  if (error) {
+    const iconStyleClass = colorClasses[color] || colorClasses.primary;
+
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-red-500 text-xl p-8 border border-red-800 rounded-lg bg-red-900/20 flex flex-col items-center gap-4">
-          <AlertCircle className="w-12 h-12" />
-          <span>Erro ao carregar dashboard: {error}</span>
-          <button
-            onClick={handleRefresh}
-            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded text-white text-sm"
-          >
-            Tentar Novamente
-          </button>
+      <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 shadow-lg hover:bg-slate-800 transition-all duration-300">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <p className="text-sm font-medium text-slate-400 mb-1">{title}</p>
+            <h3 className="text-2xl font-bold text-slate-100 tracking-tight">
+              {value}
+            </h3>
+          </div>
+          <div className={`p-3 rounded-lg border ${iconStyleClass}`}>
+            <Icon size={20} />
+          </div>
         </div>
+        {(subtext || trend) && (
+          <div className="flex items-center text-sm">
+            {trend && (
+              <span
+                className={`flex items-center font-medium mr-2 ${
+                  trend === "up" ? "text-emerald-400" : "text-red-400"
+                }`}
+              >
+                {trend === "up" ? (
+                  <ArrowUpRight size={16} />
+                ) : (
+                  <ArrowDownRight size={16} />
+                )}
+              </span>
+            )}
+            <span className="text-slate-500">{subtext}</span>
+          </div>
+        )}
       </div>
     );
-  }
+  };
 
-  if (loading && !producaoData && !faturamentoData && !analiseIaData) {
-    // Mostra loading inicial apenas se não houver nenhum dado carregado ainda
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="text-cyan-400 text-xl flex items-center gap-2">
-          <RefreshCw className="w-6 h-6 animate-spin" />
-          Carregando dados em tempo real...
-        </div>
+  const ChartCard = ({ title, children, action }) => (
+    <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 shadow-lg h-full flex flex-col transition-all duration-300 hover:bg-slate-800 min-w-0">
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-lg font-semibold text-slate-200 flex items-center gap-2">
+          {title}
+        </h3>
+        {action}
       </div>
-    );
-  }
+      {/* Wrapper com altura fixa para garantir renderização do Recharts */}
+      <div className="w-full h-[320px]">{children}</div>
+    </div>
+  );
 
-  return (
-    <div
-      className="min-h-screen bg-slate-950 text-white p-6 w-full max-w-full"
-      onClick={() => isFilterOpen && setIsFilterOpen(false)}
-    >
-      {/* Header Geral */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-1">
-            TORRE DE CONTROLE INTEGRADA
-          </h1>
-          <p className="text-slate-400">
-            Visão Unificada: Produção, Financeiro e IA |{" "}
-            <span className="text-cyan-400 font-medium">{selectedPeriod}</span>
-          </p>
+  // --- RENDERIZAÇÃO DOS PAINÉIS ---
+
+  const renderOperationsTab = () => {
+    if (!opsData) return null;
+
+    const {
+      panel_demand = {},
+      panel_effort = {},
+      panel_delivery = {},
+      panel_complexity = {},
+      panel_flow = {},
+      panel_strategic = {},
+      panel_executive = {},
+    } = opsData;
+
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        {/* 1. PAINEL EXECUTIVO (RESUMO) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <StatCard
+            title="Backlog Total"
+            value={panel_executive.backlog_total || 0}
+            subtext="Itens pendentes"
+            icon={Layers}
+            color="blue"
+          />
+          <StatCard
+            title="Entregas (Mês)"
+            value={panel_executive.deliveries_month || 0}
+            subtext="Itens concluídos"
+            icon={CheckCircle2}
+            color="green"
+            trend="up"
+          />
+          <StatCard
+            title="Lead Time Médio"
+            value={`${(panel_executive.lead_time_avg || 0).toFixed(1)} dias`}
+            subtext="Tempo de ciclo"
+            icon={Clock}
+            color="violet"
+          />
+          <StatCard
+            title="No Prazo"
+            value={`${panel_executive.on_time_percent || 0}%`}
+            subtext="SLA Compliance"
+            icon={Target}
+            color="orange"
+          />
+          <StatCard
+            title="Esforço vs Cap."
+            value={panel_executive.effort_vs_capacity || "0/0"}
+            subtext="Horas utilizadas"
+            icon={Zap}
+            color="red"
+          />
         </div>
-        <div className="flex gap-3 relative">
-          {/* Botão de Filtro */}
-          <button
-            className={`p-2 rounded-lg transition-all ${
-              isFilterOpen
-                ? "bg-cyan-600 text-white"
-                : "bg-slate-800 hover:bg-slate-700 text-slate-400"
-            }`}
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsFilterOpen(!isFilterOpen);
-            }}
-          >
-            <Filter className="w-5 h-5" />
-          </button>
 
-          {/* Menu Dropdown do Filtro */}
-          {isFilterOpen && (
-            <div className="absolute top-12 right-12 w-48 bg-slate-900 border border-slate-800 rounded-lg shadow-xl z-50 overflow-hidden">
-              <div className="p-2 border-b border-slate-800 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Período
-              </div>
-              {periodOptions.map((period) => (
-                <button
-                  key={period}
-                  className="w-full text-left px-4 py-3 text-sm text-slate-300 hover:bg-slate-800 hover:text-white flex items-center justify-between transition-colors"
-                  onClick={() => handleFilterSelect(period)}
+        {/* 2. DEMANDA & ESFORÇO */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ChartCard title="Classificação da Demanda (Por Tipo)">
+            <ResponsiveContainer width="99%" height="100%">
+              <BarChart
+                data={panel_demand.by_type || []}
+                layout="vertical"
+                margin={{ left: 40, right: 20 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={true}
+                  vertical={false}
+                  stroke="#334155"
+                />
+                <XAxis type="number" stroke="#94a3b8" fontSize={12} />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={100}
+                  tick={{ fontSize: 12, fill: "#94a3b8" }}
+                  stroke="#94a3b8"
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#1e293b",
+                    borderColor: "#334155",
+                    color: "#f1f5f9",
+                    borderRadius: "8px",
+                  }}
+                  cursor={{ fill: "#334155", opacity: 0.4 }}
+                />
+                <Bar
+                  dataKey="value"
+                  fill={COLORS.primary}
+                  radius={[0, 4, 4, 0]}
+                  barSize={24}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Backlog por Time">
+            <ResponsiveContainer width="99%" height="100%">
+              <PieChart>
+                <Pie
+                  data={panel_demand.backlog_by_team || []}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                  dataKey="value"
+                  stroke="none"
                 >
-                  {period}
-                  {selectedPeriod === period && (
-                    <Check className="w-4 h-4 text-cyan-400" />
+                  {(panel_demand.backlog_by_team || []).map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS.chart[index % COLORS.chart.length]}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#1e293b",
+                    borderColor: "#334155",
+                    color: "#f1f5f9",
+                    borderRadius: "8px",
+                  }}
+                />
+                <Legend
+                  layout="vertical"
+                  verticalAlign="middle"
+                  align="right"
+                  iconType="circle"
+                  wrapperStyle={{ color: "#cbd5e1" }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        </div>
+
+        {/* 3. ENTREGAS & COMPLEXIDADE */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <ChartCard title="Evolução de Entregas (Throughput)">
+              <ResponsiveContainer width="99%" height="100%">
+                <BarChart data={panel_delivery.throughput_history || []}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#334155"
+                  />
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} />
+                  <YAxis stroke="#94a3b8" fontSize={12} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#1e293b",
+                      borderColor: "#334155",
+                      color: "#f1f5f9",
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <Bar
+                    dataKey="value"
+                    fill={COLORS.success}
+                    radius={[4, 4, 0, 0]}
+                    barSize={32}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+
+          <ChartCard title="Complexidade das Demandas">
+            <ResponsiveContainer width="99%" height="100%">
+              <PieChart>
+                <Pie
+                  data={panel_complexity.distribution || []}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={0}
+                  outerRadius={100}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {(panel_complexity.distribution || []).map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={
+                        entry.name === "Alta"
+                          ? COLORS.danger
+                          : entry.name === "Média"
+                          ? COLORS.warning
+                          : COLORS.success
+                      }
+                    />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#1e293b",
+                    borderColor: "#334155",
+                    color: "#f1f5f9",
+                    borderRadius: "8px",
+                  }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  iconType="circle"
+                  wrapperStyle={{ color: "#cbd5e1" }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        </div>
+
+        {/* 4. FLUXO & ESTRATÉGICO */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+              <Activity size={20} className="text-indigo-400" /> Fluxo (Kanban)
+            </h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                <span className="text-slate-400">Work In Progress (WIP)</span>
+                <span className="font-bold text-slate-200">
+                  {panel_flow.wip || 0}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                <span className="text-slate-400">Cycle Time Médio</span>
+                <span className="font-bold text-slate-200">
+                  {(panel_flow.cycle_time_avg || 0).toFixed(1)} dias
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                <span className="text-slate-400">Eficiência de Fluxo</span>
+                <span className="font-bold text-slate-200">
+                  {panel_flow.efficiency || 0}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+              <DollarSign size={20} className="text-emerald-400" /> Estratégico
+            </h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                <span className="text-slate-400">Custo Estimado Total</span>
+                <span className="font-bold text-slate-200">
+                  R${" "}
+                  {(panel_strategic.total_estimated_cost || 0).toLocaleString(
+                    "pt-BR",
+                    { maximumFractionDigits: 0 }
                   )}
-                </button>
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                <span className="text-slate-400">ROI (Estimado)</span>
+                <span className="font-bold text-emerald-400">
+                  R${" "}
+                  {(panel_strategic.roi_proxy || 0).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 0,
+                  })}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-red-900/20 rounded-lg border border-red-900/30">
+                <span className="text-red-400">Itens em Risco</span>
+                <span className="font-bold text-red-400">
+                  {panel_strategic.items_at_risk || 0}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+              <Users size={20} className="text-violet-400" /> Demanda por Área
+            </h3>
+            <div className="space-y-3">
+              {(panel_demand.by_area || []).slice(0, 5).map((area, idx) => (
+                <div key={idx} className="flex items-center justify-between">
+                  <span className="text-sm text-slate-400 truncate max-w-[150px]">
+                    {area.name}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 h-2 bg-slate-700 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-violet-500 rounded-full"
+                        style={{
+                          width: `${
+                            (area.value / (panel_demand.total || 1)) * 100
+                          }%`,
+                        }}
+                      />
+                    </div>
+                    <span className="text-xs font-medium text-slate-300 w-8 text-right">
+                      {area.value}
+                    </span>
+                  </div>
+                </div>
               ))}
             </div>
-          )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
-          {/* Botão de Refresh */}
-          <button
-            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors text-slate-400 hover:text-white"
-            onClick={handleRefresh}
-            disabled={loading}
+  const renderBillingTab = () => {
+    if (!billingData)
+      return (
+        <div className="p-8 text-center text-slate-500">
+          Carregando dados financeiros...
+        </div>
+      );
+
+    const {
+      panel_executive = {},
+      panel_productivity = {},
+      panel_costs = {},
+      panel_risks = {},
+    } = billingData;
+
+    return (
+      <div className="space-y-8 animate-in fade-in duration-500">
+        {/* 1. PAINEL EXECUTIVO FINANCEIRO */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            title="Faturamento Total"
+            value={`R$ ${(panel_executive.total_revenue || 0).toLocaleString(
+              "pt-BR",
+              { maximumFractionDigits: 0 }
+            )}`}
+            subtext="Receita Bruta"
+            icon={DollarSign}
+            color="green"
+            trend="up"
+          />
+          <StatCard
+            title="Margem Líquida"
+            value={`R$ ${(panel_executive.net_margin || 0).toLocaleString(
+              "pt-BR",
+              { maximumFractionDigits: 0 }
+            )}`}
+            subtext="Resultado Final"
+            icon={TrendingUp}
+            color="blue"
+          />
+          <StatCard
+            title="Ticket Médio"
+            value={`R$ ${(panel_executive.ticket_avg || 0).toLocaleString(
+              "pt-BR",
+              { maximumFractionDigits: 0 }
+            )}`}
+            subtext="Por Demanda"
+            icon={Target}
+            color="violet"
+          />
+          <StatCard
+            title="Margem Bruta (Est.)"
+            value={`R$ ${(panel_executive.gross_margin || 0).toLocaleString(
+              "pt-BR",
+              { maximumFractionDigits: 0 }
+            )}`}
+            subtext="Antes de impostos"
+            icon={Briefcase}
+            color="orange"
+          />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ChartCard title="Top Clientes (Receita)">
+            <ResponsiveContainer width="99%" height="100%">
+              <BarChart
+                data={panel_executive.top_clients || []}
+                layout="vertical"
+                margin={{ left: 40, right: 20 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={true}
+                  vertical={false}
+                  stroke="#334155"
+                />
+                <XAxis type="number" hide />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={100}
+                  tick={{ fontSize: 12, fill: "#94a3b8" }}
+                  stroke="#94a3b8"
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#1e293b",
+                    borderColor: "#334155",
+                    color: "#f1f5f9",
+                    borderRadius: "8px",
+                  }}
+                />
+                <Bar
+                  dataKey="value"
+                  fill={COLORS.success}
+                  radius={[0, 4, 4, 0]}
+                  barSize={24}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+
+          <ChartCard title="Receita vs Meta (Mock)">
+            <ResponsiveContainer width="99%" height="100%">
+              <BarChart data={panel_executive.revenue_vs_target || []}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#334155"
+                />
+                <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} />
+                <YAxis stroke="#94a3b8" fontSize={12} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#1e293b",
+                    borderColor: "#334155",
+                    color: "#f1f5f9",
+                    borderRadius: "8px",
+                  }}
+                />
+                <Bar
+                  dataKey="value"
+                  fill={COLORS.primary}
+                  radius={[4, 4, 0, 0]}
+                  barSize={48}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </ChartCard>
+        </div>
+
+        {/* 2. PRODUTIVIDADE X FINANCEIRO */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+              <Zap size={20} className="text-amber-400" /> Eficiência
+            </h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                <span className="text-slate-400">Valor / Sprint (Mês)</span>
+                <span className="font-bold text-slate-200">
+                  R${" "}
+                  {(panel_productivity.value_per_sprint || 0).toLocaleString(
+                    "pt-BR",
+                    { maximumFractionDigits: 0 }
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                <span className="text-slate-400">Valor / Desenvolvedor</span>
+                <span className="font-bold text-slate-200">
+                  R${" "}
+                  {(panel_productivity.value_per_dev || 0).toLocaleString(
+                    "pt-BR",
+                    { maximumFractionDigits: 0 }
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
+                <span className="text-slate-400">Taxa de Conversão</span>
+                <span className="font-bold text-emerald-400">
+                  {panel_productivity.conversion_rate || 0}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="md:col-span-2">
+            <ChartCard title="Custo vs Margem por Time">
+              <ResponsiveContainer width="99%" height="100%">
+                <BarChart data={panel_productivity.cost_vs_margin || []}>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#334155"
+                  />
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} />
+                  <YAxis stroke="#94a3b8" fontSize={12} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#1e293b",
+                      borderColor: "#334155",
+                      color: "#f1f5f9",
+                      borderRadius: "8px",
+                    }}
+                  />
+                  <Legend wrapperStyle={{ color: "#cbd5e1" }} />
+                  <Bar
+                    dataKey="cost"
+                    name="Custo"
+                    fill={COLORS.danger}
+                    radius={[4, 4, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="margin"
+                    name="Margem"
+                    fill={COLORS.success}
+                    radius={[4, 4, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </ChartCard>
+          </div>
+        </div>
+
+        {/* 3. CUSTOS E RISCOS */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+              <Activity size={20} className="text-red-400" /> Custos
+              Operacionais
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700/50 text-center">
+                <p className="text-xs text-slate-500 uppercase">
+                  Custo / Demanda
+                </p>
+                <p className="text-xl font-bold text-slate-200 mt-1">
+                  R${" "}
+                  {(panel_costs.cost_per_demand || 0).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 0,
+                  })}
+                </p>
+              </div>
+              <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700/50 text-center">
+                <p className="text-xs text-slate-500 uppercase">Custo / Hora</p>
+                <p className="text-xl font-bold text-slate-200 mt-1">
+                  R$ {(panel_costs.cost_per_hour || 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700/50 text-center">
+                <p className="text-xs text-slate-500 uppercase">
+                  Custo Retrabalho
+                </p>
+                <p className="text-xl font-bold text-red-400 mt-1">
+                  R${" "}
+                  {(panel_costs.rework_cost || 0).toLocaleString("pt-BR", {
+                    maximumFractionDigits: 0,
+                  })}
+                </p>
+              </div>
+              <div className="p-4 bg-slate-900/50 rounded-lg border border-slate-700/50 text-center">
+                <p className="text-xs text-slate-500 uppercase">
+                  Desvio Financeiro
+                </p>
+                <p className="text-xl font-bold text-amber-400 mt-1">
+                  R${" "}
+                  {(panel_costs.financial_deviation || 0).toLocaleString(
+                    "pt-BR",
+                    { maximumFractionDigits: 0 }
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 p-6 rounded-xl border border-slate-700 shadow-lg">
+            <h3 className="text-lg font-semibold text-slate-200 mb-4 flex items-center gap-2">
+              <AlertCircle size={20} className="text-orange-400" /> Riscos
+              Financeiros
+            </h3>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">
+                  Concentração de Receita (Top 1)
+                </span>
+                <span
+                  className={`font-bold ${
+                    (panel_risks.concentration_pct || 0) > 50
+                      ? "text-red-400"
+                      : "text-slate-200"
+                  }`}
+                >
+                  {(panel_risks.concentration_pct || 0).toFixed(1)}%
+                </span>
+              </div>
+              <div className="w-full bg-slate-700 rounded-full h-2.5">
+                <div
+                  className="bg-orange-500 h-2.5 rounded-full"
+                  style={{
+                    width: `${Math.min(
+                      panel_risks.concentration_pct || 0,
+                      100
+                    )}%`,
+                  }}
+                ></div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-700">
+                <p className="text-sm text-slate-400 mb-2">
+                  Projetos com Menor Margem:
+                </p>
+                <div className="space-y-2">
+                  {(panel_risks.negative_projects || [])
+                    .slice(0, 3)
+                    .map((proj, idx) => (
+                      <div key={idx} className="flex justify-between text-sm">
+                        <span className="text-slate-300">{proj.name}</span>
+                        <span className="text-red-400 font-medium">
+                          R${" "}
+                          {proj.margin.toLocaleString("pt-BR", {
+                            maximumFractionDigits: 0,
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-900 p-6 space-y-8">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-100 tracking-tight">
+            Dashboard de Operações
+          </h1>
+          <p className="text-slate-400 mt-1">
+            Visão unificada de demanda, entregas e performance.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 bg-slate-800 p-1.5 rounded-lg border border-slate-700 shadow-sm">
+          {["operations", "billing", "analysis"].map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                activeTab === tab
+                  ? "bg-indigo-900/50 text-indigo-300 shadow-sm border border-indigo-700/50"
+                  : "text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+              }`}
+            >
+              {tab === "operations"
+                ? "Operação"
+                : tab === "billing"
+                ? "Financeiro"
+                : "Análise IA"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-lg">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-slate-400">
+            <Filter size={18} />
+            <span className="text-sm font-medium">Filtros:</span>
+          </div>
+          <select
+            value={selectedPeriod}
+            onChange={(e) => setSelectedPeriod(e.target.value)}
+            className="bg-slate-900 border border-slate-700 text-sm font-medium text-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 cursor-pointer py-2 pl-3 pr-8 outline-none"
           >
-            <RefreshCw className={`w-5 h-5 ${loading ? "animate-spin" : ""}`} />
+            <option value="7">Últimos 7 dias</option>
+            <option value="30">Últimos 30 dias</option>
+            <option value="90">Último Trimestre</option>
+            <option value="year">Este Ano</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-slate-500 flex items-center gap-1">
+            <Clock size={14} />
+            Atualizado: {lastUpdate.toLocaleTimeString()}
+          </span>
+          <button
+            onClick={fetchDashboardData}
+            className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-700 rounded-full transition-colors"
+            title="Atualizar dados"
+          >
+            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
           </button>
         </div>
       </div>
 
-      {/* --- NOVA SEÇÃO: VISÃO OPERACIONAL (INJEÇÃO SEGURA) --- */}
-      <OperationalOverview />
+      {/* Content */}
+      {loading && !opsData ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-red-900/20 border border-red-900/50 text-red-400 p-4 rounded-lg flex items-center gap-3">
+          <AlertCircle size={20} />
+          <p>{error}</p>
+        </div>
+      ) : (
+        <>
+          {/* WIDGET DE SAÚDE DO SISTEMA */}
 
-      {/* Menu de Navegação (Abas) */}
-      <div className="flex gap-2 mb-6 bg-slate-900 rounded-lg p-2 border border-slate-800 w-fit">
-        <button
-          onClick={() => setActiveTab("producao")}
-          className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all ${
-            activeTab === "producao"
-              ? "bg-cyan-600 text-white shadow-lg"
-              : "text-slate-400 hover:text-white hover:bg-slate-800"
-          }`}
-        >
-          <BarChart3 className="w-5 h-5" />
-          <span className="font-semibold">Produção</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("faturamento")}
-          className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all ${
-            activeTab === "faturamento"
-              ? "bg-emerald-600 text-white shadow-lg"
-              : "text-slate-400 hover:text-white hover:bg-slate-800"
-          }`}
-        >
-          <DollarSign className="w-5 h-5" />
-          <span className="font-semibold">Faturamento</span>
-        </button>
-        <button
-          onClick={() => setActiveTab("analise-ia")}
-          className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all ${
-            activeTab === "analise-ia"
-              ? "bg-purple-600 text-white shadow-lg"
-              : "text-slate-400 hover:text-white hover:bg-slate-800"
-          }`}
-        >
-          <Brain className="w-5 h-5" />
-          <span className="font-semibold">Análise IA</span>
-        </button>
-      </div>
-
-      {/* Conteúdo das Abas (com loading state sutil se já houver dados) */}
-      <div
-        className={`transition-all duration-300 ${
-          loading && (producaoData || faturamentoData || analiseIaData)
-            ? "opacity-70 pointer-events-none"
-            : ""
-        }`}
-      >
-        {activeTab === "producao" && producaoData && (
-          <ProductionContent data={producaoData} />
-        )}
-        {activeTab === "faturamento" && faturamentoData && (
-          <FaturamentoContent data={faturamentoData} />
-        )}
-        {activeTab === "analise-ia" && analiseIaData && (
-          <AnaliseIAContent data={analiseIaData} />
-        )}
-      </div>
+          {activeTab === "operations" && renderOperationsTab()}
+          {activeTab === "billing" && renderBillingTab()}
+          {activeTab === "analysis" && (
+            <AnalysisTab
+              API_BASE_URL={API_BASE_URL}
+              selectedPeriod={selectedPeriod}
+            />
+          )}
+        </>
+      )}
     </div>
   );
 };

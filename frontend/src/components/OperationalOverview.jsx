@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { ClipboardList, Zap, Cpu, Eye } from "lucide-react";
 import PipelineCard from "./PipelineCard";
+import { API_BASE_URL } from "../config";
 
 const OperationalOverview = () => {
   const [stats, setStats] = useState(null);
@@ -10,7 +11,7 @@ const OperationalOverview = () => {
     const fetchStats = async () => {
       try {
         const response = await fetch(
-          "http://localhost:8080/api/v1/analytics/workflow-stats"
+          `${API_BASE_URL}/analytics/workflow-stats`
         );
         if (!response.ok) throw new Error("Falha ao buscar estatísticas");
         const data = await response.json();

@@ -1,26 +1,42 @@
-# Byte-compiled / optimized / C extensions
+# Python-generated files
 __pycache__/
-*.py[cod]
-*.so
-
-# Caches de ferramentas de desenvolvimento
-.pyright_cache/
-.pytest_cache/
-.mypy_cache/
-
-# Configurações de IDE
-.vscode/
-.idea/
-
-# Ambientes Virtuais
-.venv
-venv/
-env/
-.env
-.env/
-
-# Arquivos de dependências e build
-wheels/
+*.py[oc]
+*.pyd
 build/
 dist/
-*.egg-info/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+.env.env.bak*
+
+# VSCode
+.vscode/
+
+# Cache
+.pyright_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Application Data
+data/resultado_analise/
+data/manuais/
+data/uploads/
+data/generated_*/
+data/*.csv
+data/*.json
+data/*.xlsx
+!data/templates/
+
+# Logs
+*.log
+simulator_logs*.txt
+sim_logs*.txt

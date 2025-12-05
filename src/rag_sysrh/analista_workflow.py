@@ -91,6 +91,7 @@ class WorkflowState(TypedDict):
     diagnostico: str | None
     dados_metricas: str | None
     relatorio_final: RelatorioAnalise | None
+    solicitacao_id: int | None
 
 
 class AnalistaWorkflow:
@@ -226,8 +227,6 @@ class AnalistaWorkflow:
         logging.info("Passo 3.5: Consultando guia de métricas SISP...")
         return {"dados_metricas": self._get_regras_sisp()}
 
-    # ... (outros métodos mantidos) ...
-
     async def processar_rejeicao(self, rcm_text: str, client_feedback: str) -> str:
         """
         Processa a rejeição do cliente, revisando o RCM com base no feedback.
@@ -283,7 +282,7 @@ class AnalistaWorkflow:
             logging.info("RCM revisado com sucesso pela IA.")
             return novo_rcm
         except Exception as e:
-            logging.error(f"Erro ao revisar RCM: {e}")
+            logging.exception(f"Erro ao revisar RCM: {e}")
             # Em caso de erro, retorna o original com uma nota
             return f"## ⚠️ Erro na Revisão Automática\n\nNão foi possível processar o feedback automaticamente. Erro: {e}\n\n---\n\n{rcm_text}"
 
@@ -437,13 +436,19 @@ class AnalistaWorkflow:
         logging.info("Passo 6: Finalizando análise e gerando artefatos...")
         relatorio = state.get("relatorio_final")
 
-        if not relatorio or not relatorio.solicitacao_id:
-            logging.warning(
-                "Relatório incompleto ou sem ID de solicitação. Pulando geração de RCM."
-            )
+        if not relatorio:
+            logging.warning("Relatório incompleto. Pulando geração de RCM.")
             return {"relatorio_final": relatorio}
 
+        # Tenta obter o ID do estado se não estiver no relatório
         issue_number = relatorio.solicitacao_id
+        if not issue_number and state.get("solicitacao_id"):
+            issue_number = state.get("solicitacao_id")
+            relatorio.solicitacao_id = issue_number
+
+        if not issue_number:
+            logging.warning("ID da solicitação não encontrado. Pulando geração de RCM.")
+            return {"relatorio_final": relatorio}
 
         # Verifica se é Evolutiva/Melhoria para gerar RCM
         # Normaliza para lowercase para comparação
@@ -481,7 +486,7 @@ class AnalistaWorkflow:
                 )
 
             except Exception as e:
-                logging.error(f"Erro ao gerar RCM ou atualizar GitHub: {e}")
+                logging.exception(f"Erro ao gerar RCM ou atualizar GitHub: {e}")
 
         return {"relatorio_final": relatorio}
 
@@ -512,10 +517,13 @@ class AnalistaWorkflow:
 
         return workflow.compile()
 
-    async def arun(self, solicitacao: str) -> RelatorioAnalise:
+    async def arun(
+        self, solicitacao: str, solicitacao_id: int | None = None
+    ) -> RelatorioAnalise:
         """Executa o workflow completo de forma assíncrona."""
         initial_state: WorkflowState = {
             "solicitacao_original": solicitacao,
+            "solicitacao_id": solicitacao_id,
             "classificacao": None,
             "dados_historico": None,
             "dados_rcm_especifico": None,
@@ -527,11 +535,9 @@ class AnalistaWorkflow:
         final_state = await self.graph.ainvoke(initial_state)
         relatorio_final = final_state.get("relatorio_final")
 
-        # Busca o ID da solicitação no grafo para enriquecer o relatório
-        # Nota: _buscar_solicitacao_por_texto é síncrono (Neo4j driver), pode bloquear.
-        # Idealmente, refatorar para async ou rodar em threadpool se for gargalo.
-        # Por enquanto, mantemos simples.
-        solicitacao_id = self._buscar_solicitacao_por_texto(solicitacao)
+        # Se não foi passado ID, tenta buscar no grafo (fallback)
+        if not solicitacao_id:
+            solicitacao_id = self._buscar_solicitacao_por_texto(solicitacao)
 
         if relatorio_final:
             relatorio_final.solicitacao_id = solicitacao_id

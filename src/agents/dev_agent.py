@@ -81,29 +81,15 @@ PROCEDIMENTO DE FINALIZAÇÃO OBRIGATÓRIO: Quando você tiver concluído a tare
 agent_executor = create_react_agent(model=llm, tools=tools)
 
 
-async def run_dev_agent(issue_number: int, issue_data: dict) -> str:
+async def run_dev_agent_generation(issue_number: int, issue_data: dict) -> str:
     """
-    Executa o Agente Desenvolvedor para uma tarefa específica vinda do GitHub.
-
-    Esta função prepara o prompt inicial com os dados da issue e invoca o grafo
-    do agente, gerenciando a execução e tratando possíveis erros.
-
-    Após a execução do agente, orquestra a geração e validação da documentação.
-
-    Args:
-        issue_number (int): O número da issue no GitHub.
-        issue_data (dict): Dicionário contendo o 'title' e 'body' da issue.
-
-    Returns:
-        str: A resposta final do agente após a conclusão da execução, ou uma
-             mensagem de erro em caso de falha.
+    FASE 1: Geração de Código.
+    Executa o Agente Desenvolvedor para implementar a solução no código.
+    Ao final, move para revisão técnica.
     """
     title = issue_data.get("title", "Sem título")
     body = issue_data.get("body", "Sem descrição")
-    # owner = issue_data.get("owner", "andreylps") # Não usado mais, service usa env
-    # repo = issue_data.get("repo", "RAG_SYSRH") # Não usado mais, service usa env
 
-    # Constrói a descrição da tarefa para o agente
     task_description = f"""
     VOCÊ É O AGENTE DESENVOLVEDOR.
     SUA TAREFA É IMPLEMENTAR A SOLUÇÃO PARA A ISSUE #{issue_number}: {title}
@@ -114,114 +100,125 @@ async def run_dev_agent(issue_number: int, issue_data: dict) -> str:
     INSTRUÇÕES:
     1. Analise o pedido.
     2. Planeje a implementação.
-    3. Execute as alterações no código.
+    3. Execute as alterações no código (crie/edite arquivos).
+    4. NÃO gere manual operacional ainda.
     """
 
-    logger.info(f"Iniciando Agente Dev para Issue #{issue_number}: {title}")
+    logger.info(f"Iniciando Agente Dev (Fase 1 - Geração) para Issue #{issue_number}: {title}")
 
     try:
-        # Prepara a entrada para o grafo do agente
         inputs = {
             "messages": [
                 SystemMessage(content=SYSTEM_PROMPT),
                 HumanMessage(content=task_description),
             ]
         }
-
-        # Configuração de execução do LangGraph
-        # Aumentamos o limite de recursão para permitir tarefas mais complexas
-        # que exigem muitos passos de pensamento e uso de ferramentas.
         config = {"recursion_limit": 100}
 
-        # Executa o grafo
-        # O método ainvoke executa o agente até a conclusão ou até atingir o limite.
+        # Executa o grafo (Code Generation)
         final_state = await agent_executor.ainvoke(inputs, config=config)
-
-        # Extrai a última mensagem (resposta final do assistente)
         messages = final_state["messages"]
         last_message = messages[-1]
 
-        # --- ORQUESTRAÇÃO PÓS-AGENTE (Documentação & QA) ---
-        # Só executa se o agente não tiver falhado catastroficamente (assumindo que last_message é sucesso)
-        # Idealmente verificaríamos se o agente reportou sucesso, mas vamos assumir que sim por enquanto.
+        # Finalização da Fase 1
+        # O agente já deve ter postado o relatório de mudanças via tool (instrução do System Prompt).
+        # Agora atualizamos o status para Review Técnico.
+        
+        await github_apply_labels(
+            issue_number=issue_number,
+            labels_to_add=["status:aguardando-review-tecnico"],
+            labels_to_remove=["status:pronto-para-dev", "status:aguardando-liberacao-dev"]
+        )
 
-        try:
-            # 1. Gerar/Atualizar Manual Operacional
-            logger.info(f"Gerando Manual Operacional para issue #{issue_number}...")
-            # Assumindo issue_type="Feature" por padrão se não tiver info
-            manual_file_path = generate_or_update_operational_manual(
-                issue_data, "Feature"
-            )
-
-            # 2. Validar Manual (QA)
-            logger.info(
-                f"Iniciando validação de qualidade do manual operacional para issue #{issue_number}..."
-            )
-            qa_result = await validate_operational_manual(manual_file_path, issue_data)
-
-            if not qa_result.is_compliant:
-                logger.warning(
-                    f"❌ Validação de qualidade do manual falhou para issue #{issue_number}."
-                )
-
-                # Construir o feedback detalhado para o GitHub
-                feedback_gh = "### ❌ FALHA NA AUDITORIA DE QUALIDADE DA DOCUMENTAÇÃO (REPROVAÇÃO)\n\n"
-                feedback_gh += "O Agente de Qualidade revisou o Manual Operacional gerado e encontrou problemas de conformidade. O deploy foi BLOQUEADO até que a documentação seja corrigida.\n\n"
-                feedback_gh += f"**Resumo do Veredito da IA:** {qa_result.summary}\n\n"
-
-                if qa_result.issues:
-                    feedback_gh += "**Detalhes dos Problemas:**\n"
-                    for i, q_issue in enumerate(qa_result.issues):
-                        feedback_gh += (
-                            f"- {i + 1}. Critério [{q_issue.criterion_id}]: {q_issue.description}\n"
-                            f"  * Recomendação: {q_issue.recommendation}\n"
-                        )
-
-                # Adicionar comentário à issue no GitHub
-                await github_post_comment(issue_number, feedback_gh)
-
-                # Mover a issue para o fluxo de retrabalho
-                await github_apply_labels(
-                    issue_number=issue_number,
-                    labels_to_add=["status:aguardando-correcao-doc"],
-                    labels_to_remove=[
-                        "status:pronto-para-dev",
-                        "status:aguardando-review-tecnico",
-                    ],
-                )
-
-                logger.warning(
-                    f"⛔ Deploy bloqueado para issue #{issue_number}: Falha na QA da documentação. Movido para retrabalho."
-                )
-                return "Documentação reprovada pela QA. Issue movida para correção de documentação."
-
-            else:
-                logger.info(
-                    f"✅ QA Aprovada. Prosseguindo para o fechamento/deploy da issue #{issue_number}."
-                )
-                # O fluxo continua normalmente
-                await github_apply_labels(
-                    issue_number=issue_number,
-                    labels_to_remove=["status:aguardando-correcao-doc"],
-                )
-
-                # Adiciona um comentário de sucesso na doc
-                success_msg = f"### ✅ Documentação Aprovada\n\nO Manual Operacional foi gerado e validado com sucesso.\n\n**Caminho:** `{manual_file_path}`"
-                await github_post_comment(issue_number, success_msg)
-
-        except Exception as doc_error:
-            logger.error(
-                f"Erro na etapa de documentação/QA: {doc_error}", exc_info=True
-            )
-            await post_comment(
-                issue_number,
-                f"⚠️ Erro ao processar documentação: {str(doc_error)}",
-            )
-            # Não falha o processo todo, mas avisa
+        await github_post_comment(
+            issue_number,
+            "### ✋ Fase de Desenvolvimento Concluída\n\nO código foi gerado e aplicado. Aguardando **Revisão Técnica** para prosseguir com a documentação e homologação."
+        )
 
         return last_message.content
 
     except Exception as e:
-        error_msg = f"Falha na execução do Agente Dev: {str(e)}"
-        logger.error(error_msg, exc_info=True)  # Loga o traceback completo para debug
+        error_msg = f"Falha na Fase 1 do Agente Dev: {str(e)}"
+        logger.error(error_msg, exc_info=True)
         return error_msg
+
+
+async def run_dev_agent_execution(issue_number: int, issue_data: dict) -> str:
+    """
+    FASE 2: Execução/Finalização.
+    Gera documentação, roda QA e prepara para homologação.
+    Disparado após aprovação técnica.
+    """
+    logger.info(f"Iniciando Agente Dev (Fase 2 - Execução) para Issue #{issue_number}")
+
+    try:
+        # 1. Gerar/Atualizar Manual Operacional
+        logger.info(f"Gerando Manual Operacional para issue #{issue_number}...")
+        manual_file_path = generate_or_update_operational_manual(
+            issue_data, "Feature"
+        )
+
+        # 2. Validar Manual (QA)
+        logger.info(
+            f"Iniciando validação de qualidade do manual operacional para issue #{issue_number}..."
+        )
+        qa_result = await validate_operational_manual(manual_file_path, issue_data)
+
+        if not qa_result.is_compliant:
+            logger.warning(
+                f"❌ Validação de qualidade do manual falhou para issue #{issue_number}."
+            )
+
+            feedback_gh = "### ❌ FALHA NA AUDITORIA DE QUALIDADE DA DOCUMENTAÇÃO (REPROVAÇÃO)\n\n"
+            feedback_gh += "O Agente de Qualidade revisou o Manual Operacional gerado e encontrou problemas de conformidade. O deploy foi BLOQUEADO até que a documentação seja corrigida.\n\n"
+            feedback_gh += f"**Resumo do Veredito da IA:** {qa_result.summary}\n\n"
+
+            if qa_result.issues:
+                feedback_gh += "**Detalhes dos Problemas:**\n"
+                for i, q_issue in enumerate(qa_result.issues):
+                    feedback_gh += (
+                        f"- {i + 1}. Critério [{q_issue.criterion_id}]: {q_issue.description}\n"
+                        f"  * Recomendação: {q_issue.recommendation}\n"
+                    )
+
+            await github_post_comment(issue_number, feedback_gh)
+
+            # Volta para correção (poderia voltar para dev ou ficar em review, vamos por em correção)
+            await github_apply_labels(
+                issue_number=issue_number,
+                labels_to_add=["status:aguardando-correcao-doc"],
+                labels_to_remove=["status:aceite-homologacao", "status:aguardando-review-tecnico"],
+            )
+
+            return "Documentação reprovada pela QA."
+
+        else:
+            logger.info(
+                f"✅ QA Aprovada. Prosseguindo para o fechamento/deploy da issue #{issue_number}."
+            )
+            
+            # Atualiza para Homologação
+            await github_apply_labels(
+                issue_number=issue_number,
+                labels_to_add=["status:aceite-homologacao"],
+                labels_to_remove=["status:aguardando-review-tecnico", "status:aguardando-correcao-doc"],
+            )
+
+            success_msg = f"### ✅ Documentação Aprovada & Deploy Realizado\n\nO Manual Operacional foi gerado e validado.\n\n**Caminho:** `{manual_file_path}`\n\n**Status:** Aguardando Homologação do Usuário."
+            await github_post_comment(issue_number, success_msg)
+
+            return "Fase 2 concluída com sucesso."
+
+    except Exception as e:
+        error_msg = f"Falha na Fase 2 do Agente Dev: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        await post_comment(
+            issue_number,
+            f"⚠️ Erro na Fase 2 (Doc/QA): {str(e)}",
+        )
+        return error_msg
+
+# Mantendo compatibilidade com chamadas antigas (redireciona para Fase 1)
+async def run_dev_agent(issue_number: int, issue_data: dict) -> str:
+    return await run_dev_agent_generation(issue_number, issue_data)
+

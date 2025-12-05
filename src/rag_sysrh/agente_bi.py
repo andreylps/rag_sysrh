@@ -112,45 +112,71 @@ The question is:
     async def analisar_dados_json(self, dados: Dict[str, Any]) -> Dict[str, Any]:
         """
         Analisa um conjunto de dados já extraídos e gera insights em formato JSON.
-        Não executa queries Cypher, apenas usa o LLM para interpretação.
+        Usa um prompt detalhado para gerar um relatório executivo completo.
         """
         import json
-
         from langchain_core.messages import HumanMessage, SystemMessage
 
         prompt_system = """
-        Você é um Especialista em BI e Análise de Dados para um Dashboard Executivo.
-        Sua tarefa é analisar os dados fornecidos e gerar um relatório JSON estrito.
-        NÃO use markdown. NÃO inclua explicações fora do JSON.
+        Você é um Agente de Inteligência Artificial Especialista em Gestão Operacional e Financeira para equipes de desenvolvimento.
+        Seu papel é analisar indicadores, interpretar dados complexos e produzir relatórios executivos com insights de alto nível, claros, objetivos e acionáveis.
+        
+        🎯 Missão:
+        - Coletar, interpretar e correlacionar indicadores operacionais e financeiros.
+        - Identificar padrões, riscos, gargalos e oportunidades.
+        - Gerar relatórios estratégicos com recomendações objetivas.
+        - Transformar dados técnicos em informação executiva.
+
+        📊 Indicadores para Analisar:
+        1. Operacionais: Volume, Backlog, Esforço, Lead Time, Cycle Time, Throughput, Gargalos.
+        2. Financeiros: Faturamento, Margens, Rentabilidade, Ticket Médio, ROI, Riscos.
+
+        🧠 Como Analisar:
+        - Compare dados (tendências).
+        - Correlacione Operacional x Financeiro (ex: Aumento de Lead Time -> Queda de Margem).
+        - Identifique anomalias e gargalos.
+        - Relate riscos estratégicos (ex: Dependência de cliente, Contratos deficitários).
+
+        📝 Formato de Resposta (JSON ESTRITO):
+        Gere APENAS um JSON válido com a seguinte estrutura exata:
+        {
+            "sumario_executivo": {
+                "principais_achados": ["Achado 1", "Achado 2"],
+                "indicadores_criticos": ["Indicador 1", "Indicador 2"],
+                "oportunidades_ganho": ["Oportunidade 1"]
+            },
+            "analise_operacional": {
+                "produtividade": "Texto sobre produtividade...",
+                "eficiencia_fluxo": "Texto sobre fluxo e lead time...",
+                "qualidade_riscos": "Texto sobre qualidade e riscos..."
+            },
+            "analise_financeira": {
+                "receita_margens": "Texto sobre receita e margens...",
+                "rentabilidade_clientes": "Texto sobre rentabilidade...",
+                "riscos_financeiros": ["Risco 1", "Risco 2"]
+            },
+            "correlacao_op_fin": [
+                "Correlação 1 (ex: Atraso na entrega X custou Y)",
+                "Correlação 2"
+            ],
+            "insights_estrategicos": [
+                "Insight 1",
+                "Insight 2"
+            ],
+            "recomendacoes": [
+                { "titulo": "Ação P1", "descricao": "Descrição detalhada", "prioridade": "Alta", "prazo": "Curto Prazo" },
+                { "titulo": "Ação P2", "descricao": "Descrição detalhada", "prioridade": "Média", "prazo": "Médio Prazo" }
+            ],
+            "previsoes": {
+                "tendencias": ["Tendência 1", "Tendência 2"],
+                "riscos_futuros": ["Risco Futuro 1"]
+            }
+        }
         """
 
         prompt_user = f"""
-        Analise os seguintes dados do dashboard:
+        Analise os seguintes dados do dashboard (Operacional e Financeiro):
         {json.dumps(dados, indent=2, ensure_ascii=False)}
-
-        Gere um JSON com esta estrutura exata:
-        {{
-            "resumo": "Resumo executivo (max 2 frases)",
-            "analiseProducao": {{
-                "pontosFortes": ["Ponto 1", "Ponto 2"],
-                "atencao": ["Ponto 1", "Ponto 2"]
-            }},
-            "analiseFinanceira": {{
-                "insights": ["Insight 1", "Insight 2"]
-            }},
-            "recomendacoes": [
-                {{ "titulo": "Ação", "descricao": "Detalhe" }}
-            ],
-            "alertas": [
-                {{ "titulo": "Alerta", "descricao": "Detalhe", "tipo": "erro" }}
-            ],
-            "previsao": {{
-                "metrica1Label": "Eficiência Est.",
-                "metrica1Value": "00%",
-                "metrica2Label": "Receita Est.",
-                "metrica2Value": "R$ 00"
-            }}
-        }}
         """
 
         try:
@@ -163,7 +189,7 @@ The question is:
 
             texto_resposta = response.content
 
-            # Limpeza básica de markdown
+            # Limpeza básica de markdown para garantir JSON válido
             if "```json" in texto_resposta:
                 texto_resposta = texto_resposta.split("```json")[1].split("```")[0]
             elif "```" in texto_resposta:
@@ -174,10 +200,16 @@ The question is:
         except Exception as e:
             logging.error(f"Erro na análise direta de JSON: {e}")
             return {
-                "resumo": "Erro ao gerar análise.",
-                "analiseProducao": {"pontosFortes": [], "atencao": []},
-                "analiseFinanceira": {"insights": []},
+                "sumario_executivo": {
+                    "principais_achados": ["Erro ao gerar análise."],
+                    "indicadores_criticos": [],
+                    "oportunidades_ganho": []
+                },
+                "analise_operacional": {},
+                "analise_financeira": {},
+                "correlacao_op_fin": [],
+                "insights_estrategicos": [],
                 "recomendacoes": [],
-                "alertas": [{"titulo": "Erro IA", "descricao": str(e), "tipo": "erro"}],
-                "previsao": {},
+                "previsoes": {},
+                "erro": str(e)
             }

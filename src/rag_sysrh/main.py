@@ -3,6 +3,7 @@ import os
 
 # import guardrails as gd
 from dotenv import load_dotenv
+from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_community.vectorstores import Neo4jVector
 from langchain_core.messages import HumanMessage
 from langchain_core.output_parsers import StrOutputParser
@@ -72,7 +73,7 @@ def get_tools() -> list[Tool]:  # noqa: C901, PLR0915
         url=NEO4J_URI,
         username=NEO4J_USERNAME,
         password=NEO4J_PASSWORD,
-        index_name="manual-chunks",
+        index_name="manual_chunks",
         text_node_property="texto",
     )
 
@@ -311,4 +312,15 @@ Responda APENAS com o JSON no formato: {{"cypher": "SUA_CONSULTA_AQUI"}}
     Use esta ferramenta para perguntas como 'Qual o custo do chamado X?', 'Qual o faturamento do cliente Y?'.""",  # noqa: E501
     )
 
-    return [semantic_tool, factual_tool, billing_tool]
+    # --- FERRAMENTA 4: PESQUISA NA WEB ---
+    # Este especialista responde a perguntas gerais usando a internet.
+    tavily_tool = TavilySearchResults(max_results=3)
+    web_search_tool = Tool(
+        name="Web_Search",
+        func=tavily_tool.run,
+        description="""Útil para responder perguntas gerais, sobre eventos atuais ou tópicos não relacionados diretamente a SYSRH, clientes, manuais ou RCMs.
+    Use esta ferramenta se as outras não souberem a resposta ou para obter informações do mundo real.
+    Exemplos de entrada: 'Qual a capital da Austrália?', 'Quem ganhou o último campeonato de futebol?'""",
+    )
+
+    return [semantic_tool, factual_tool, billing_tool, web_search_tool]

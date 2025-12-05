@@ -49,6 +49,34 @@ async def get_report_detail(sprint_id: str):
     return report
 
 
+@router.get("/dashboard")
+async def get_scrum_dashboard():
+    """
+    Retorna todas as métricas avançadas para a Sala Scrum.
+    """
+    try:
+        return await scrum_master_service.calculate_advanced_metrics()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/agent/report")
+async def generate_scrum_report(
+    report_type: str,  # review, retro, planning
+    sprint_id: str = None,
+):
+    """
+    Gera um relatório qualitativo usando o Agente Scrum (IA).
+    """
+    try:
+        from src.agents.scrum_agent import scrum_agent
+
+        report = await scrum_agent.generate_report(report_type, sprint_id)
+        return {"report": report}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/close-sprint")
 async def close_sprint():
     """
@@ -56,5 +84,18 @@ async def close_sprint():
     """
     try:
         return await scrum_master_service.close_current_sprint()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/force-monitor")
+async def force_monitor_sprint(critical_only: bool = False):
+    """
+    Força a execução do monitoramento de riscos da sprint.
+    """
+    try:
+        return await scrum_master_service.monitor_active_sprint_issues(
+            critical_only=critical_only
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

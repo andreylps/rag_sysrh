@@ -180,9 +180,12 @@ class DataIngestion:
             df = pd.read_csv(
                 structured_data_abs_path,
                 sep=";",
-                skiprows=1,  # Ignora a primeira linha do arquivo
+                skiprows=9,  # Ajustado para pular o cabeçalho do relatório (linhas 0-8)
                 encoding="latin-1",
                 on_bad_lines="skip",
+                usecols=range(
+                    10
+                ),  # Ignora a última coluna vazia gerada pelo ponto e vírgula final
             )
             # Renomeia colunas para facilitar o acesso, removendo espaços e caracteres especiais  # noqa: E501
             df.columns = [

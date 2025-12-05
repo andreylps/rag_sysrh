@@ -1,24 +1,36 @@
+import os
+
+# Ensure project root is in sys.path
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Ensure project root is in sys.path
+import sys
+
+# Tenta importar o router
 import traceback  # Importante para debug
 
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-# Tenta importar o router
-try:
-    from src.api.v1.router import api_router
-except ImportError:
-    from api.v1.router import api_router
+# Get the directory containing this file (src/api)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# Get the project root (parent of src)
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
 
-load_dotenv()
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
-import os
+# Now we can import from src
+# Strict absolute import
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # Adicionado
 
+from src.api.v1.router import api_router
 from src.services.file_watcher import FileWatcherService
 from src.services.quality_service import check_for_stale_issues  # Adicionado
 
@@ -125,7 +137,7 @@ async def debug_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={
-            "detail": f"Erro interno no servidor: {str(exc)}. Verifique os logs do terminal."
+            "detail": f"Erro interno no servidor: {exc!s}. Verifique os logs do terminal."
         },
     )
 
@@ -134,11 +146,7 @@ async def debug_exception_handler(request: Request, exc: Exception):
 
 # Configuração de CORS
 origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://localhost:5174",  # Adicionando a porta alternativa do Vite
-    "http://127.0.0.1:5174",
+    "*",  # LIBERADO GERAL PARA TESTE
 ]
 
 app.add_middleware(

@@ -416,3 +416,9 @@ zstandard==0.25.0
 PyGithub==2.1.1
 fastapi
 uvicorn
+reportlab
+apscheduler
+langchain-google-genai
+python-multipart
+websockets
+radon==6.0.1

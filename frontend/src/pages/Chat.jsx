@@ -10,14 +10,16 @@ import {
   Menu,
   X,
 } from "lucide-react";
+import { API_BASE_URL, WS_BASE_URL } from "../config";
+
 import ReactMarkdown from "react-markdown";
 import ChatSidebar from "../components/ChatSidebar";
 
 const TypingIndicator = () => (
-  <div className="flex items-center gap-1 p-4 bg-slate-800 rounded-2xl rounded-tl-sm border border-slate-700 w-fit">
-    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-    <div className="w-2 h-2 bg-cyan-400 rounded-full animate-bounce"></div>
+  <div className="flex items-center gap-1 p-0 ml-2 mt-2 w-fit opacity-70">
+    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+    <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full animate-bounce"></div>
   </div>
 );
 
@@ -43,9 +45,7 @@ const Chat = () => {
 
   const fetchSessions = async () => {
     try {
-      const response = await fetch(
-        "http://127.0.0.1:8080/api/v1/chat/sessions"
-      );
+      const response = await fetch(`${API_BASE_URL}/chat/sessions`);
       if (response.ok) {
         const data = await response.json();
         setSessions(data);
@@ -58,7 +58,7 @@ const Chat = () => {
   const fetchSessionMessages = async (sessionId) => {
     try {
       const response = await fetch(
-        `http://127.0.0.1:8080/api/v1/chat/sessions/${sessionId}/messages`
+        `${API_BASE_URL}/chat/sessions/${sessionId}/messages`
       );
       if (response.ok) {
         const data = await response.json();
@@ -93,7 +93,7 @@ const Chat = () => {
     if (!window.confirm("Tem certeza que deseja excluir esta conversa?"))
       return;
     try {
-      await fetch(`http://127.0.0.1:8080/api/v1/chat/sessions/${sessionId}`, {
+      await fetch(`${API_BASE_URL}/chat/sessions/${sessionId}`, {
         method: "DELETE",
       });
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
@@ -127,7 +127,7 @@ const Chat = () => {
     setIsConnected(false);
     setConnectionError(null);
 
-    const wsUrl = "ws://127.0.0.1:8080/api/v1/chat/ws";
+    const wsUrl = `${WS_BASE_URL}/chat/ws`;
 
     try {
       console.log("Attempting WebSocket connection to 127.0.0.1...");
@@ -140,7 +140,17 @@ const Chat = () => {
       };
 
       ws.current.onmessage = (event) => {
-        const message = event.data;
+        let message = event.data;
+
+        // Tenta fazer o parse se for JSON
+        try {
+          const parsed = JSON.parse(message);
+          if (parsed && parsed.text) {
+            message = parsed.text;
+          }
+        } catch (e) {
+          // Se não for JSON, usa a string original
+        }
 
         // Ignore system messages
         if (message.startsWith("[SISTEMA]")) return;
@@ -257,201 +267,287 @@ const Chat = () => {
           <Menu size={24} />
         </button>
 
-        <header className="flex justify-between items-center mb-4 bg-slate-900/50 p-4 rounded-xl border border-slate-800 backdrop-blur-sm">
-          <div className="flex items-center gap-3 ml-10 md:ml-0">
-            {" "}
-            {/* Added margin for mobile button */}
-            <div className="p-2 bg-indigo-500/20 rounded-lg">
-              <Bot className="text-indigo-400" size={24} />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-100">
-                Assistente RAG SYS-RH
-              </h1>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    isConnected ? "bg-green-500" : "bg-red-500"
-                  }`}
-                ></span>
-                <span className="text-xs text-slate-400">
-                  {isConnected ? "Online" : "Offline"}
-                </span>
-                {!isConnected && (
-                  <button
-                    onClick={connectWebSocket}
-                    className="ml-2 text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
-                  >
-                    <RefreshCw size={10} /> Retry
-                  </button>
-                )}
-              </div>
+        <header className="flex justify-between items-center mb-4 bg-transparent p-4">
+          <div className="flex items-center gap-4 ml-10 md:ml-0">
+            <h1 className="text-2xl font-medium text-slate-100 tracking-tight">
+              neos
+            </h1>
+
+            {/* Online Status */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-full border border-slate-700/50">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  isConnected
+                    ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"
+                    : "bg-red-500"
+                }`}
+              ></span>
+              <span className="text-xs font-medium text-slate-300">
+                {isConnected ? "Online" : "Offline"}
+              </span>
             </div>
           </div>
 
-          {/* Model Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-slate-400 hidden sm:inline">
-              Modelo:
-            </span>
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="bg-slate-800 text-slate-200 text-sm rounded-lg border border-slate-700 p-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-            >
-              <option value="gemini">Gemini 1.5 Flash</option>
-              <option value="openai">GPT-4 Turbo</option>
-            </select>
+          <div className="flex items-center gap-4">
+            {!isConnected && (
+              <button
+                onClick={connectWebSocket}
+                className="text-xs text-red-400 hover:text-red-300 underline"
+              >
+                Reconectar
+              </button>
+            )}
           </div>
         </header>
 
-        <div className="flex-grow flex flex-col rounded-xl bg-slate-950/50 overflow-hidden shadow-2xl border border-slate-800">
+        <div className="grow flex flex-col rounded-2xl bg-slate-950/50 overflow-hidden shadow-2xl border border-slate-800/30 relative">
           {/* Messages Area */}
-          <div className="flex-grow overflow-y-auto p-6 space-y-6 no-scrollbar">
-            {messages.length === 0 && !connectionError && (
-              <div className="h-full flex flex-col items-center justify-center text-slate-500 opacity-60">
-                <Bot size={64} className="mb-4 text-slate-600" />
-                <p className="text-lg font-light">
-                  Como posso ajudar você hoje?
-                </p>
-              </div>
-            )}
+          <div className="grow overflow-y-auto p-4 md:p-8 space-y-8 no-scrollbar scroll-smooth flex flex-col items-center">
+            <div className="w-full max-w-3xl space-y-8">
+              {messages.length === 0 && !connectionError && (
+                <div className="h-full flex flex-col items-center justify-center text-slate-500 min-h-[400px]">
+                  <div className="mb-8">
+                    <h2 className="text-4xl font-medium text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">
+                      Olá, Andrey
+                    </h2>
+                    <h3 className="text-4xl font-medium text-slate-500 mt-2">
+                      Como posso ajudar hoje?
+                    </h3>
+                  </div>
+                  <div className="w-full max-w-2xl grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <button
+                      onClick={() =>
+                        setInput("Criar uma imagem de um escritório futurista")
+                      }
+                      className="p-4 bg-[#1e1f20] hover:bg-[#2a2b2d] rounded-xl text-left transition-colors group border border-slate-800/50"
+                    >
+                      <span className="block text-slate-200 font-medium mb-1 group-hover:text-indigo-400 transition-colors">
+                        Criar uma imagem
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        de um escritório futurista
+                      </span>
+                    </button>
 
-            {connectionError && (
-              <div className="p-4 bg-red-900/20 border border-red-900/50 rounded-lg text-red-300 text-center text-sm">
-                {connectionError}
-              </div>
-            )}
+                    <button
+                      onClick={() =>
+                        setInput(
+                          "Planejar uma sprint com foco em débitos técnicos"
+                        )
+                      }
+                      className="p-4 bg-[#1e1f20] hover:bg-[#2a2b2d] rounded-xl text-left transition-colors group border border-slate-800/50"
+                    >
+                      <span className="block text-slate-200 font-medium mb-1 group-hover:text-indigo-400 transition-colors">
+                        Planejar uma sprint
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        com foco em débitos técnicos
+                      </span>
+                    </button>
 
-            {messages.map((msg, index) => (
-              <div
-                key={index}
-                className={`flex ${
-                  msg.sender === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
+                    <button
+                      onClick={() =>
+                        setInput("Analisar código em busca de vulnerabilidades")
+                      }
+                      className="p-4 bg-[#1e1f20] hover:bg-[#2a2b2d] rounded-xl text-left transition-colors group border border-slate-800/50"
+                    >
+                      <span className="block text-slate-200 font-medium mb-1 group-hover:text-indigo-400 transition-colors">
+                        Analisar código
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        em busca de vulnerabilidades
+                      </span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {connectionError && (
+                <div className="p-4 bg-red-900/20 border border-red-900/50 rounded-lg text-red-300 text-center text-sm mx-auto max-w-md mt-4">
+                  {connectionError}
+                </div>
+              )}
+
+              {messages.map((msg, index) => (
                 <div
-                  className={`max-w-[85%] p-4 rounded-2xl shadow-sm ${
-                    msg.sender === "user"
-                      ? "bg-purple-600/10 text-white rounded-tr-sm border border-purple-500/30"
-                      : "bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700"
+                  key={index}
+                  className={`flex w-full ${
+                    msg.sender === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
-                  <div className="flex items-center gap-2 mb-1 opacity-70">
-                    {msg.sender === "user" ? (
-                      <User size={14} />
-                    ) : (
-                      <Bot size={14} />
-                    )}
-                    <span className="text-xs font-medium uppercase tracking-wider">
-                      {msg.sender === "user" ? "Você" : "Assistente"}
-                    </span>
-                  </div>
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown>{msg.text || ""}</ReactMarkdown>
-                  </div>
-                  {/* Attachments Display */}
-                  {msg.attachments && msg.attachments.length > 0 && (
-                    <div
-                      className={`flex flex-wrap gap-2 mt-2 ${
-                        msg.sender === "user" ? "justify-end" : "justify-start"
-                      }`}
-                    >
-                      {msg.attachments.map((att, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-1 bg-black/20 px-2 py-1 rounded text-xs"
-                        >
-                          <Paperclip size={10} />
-                          <span className="truncate max-w-[150px]">
-                            {att.name || "Anexo"}
-                          </span>
+                  <div
+                    className={`max-w-[85%] md:max-w-[75%] p-4 rounded-2xl ${
+                      msg.sender === "user"
+                        ? "bg-[#2a2a2a] text-slate-100 rounded-tr-sm"
+                        : "bg-transparent text-slate-100 pl-0"
+                    }`}
+                  >
+                    {msg.sender !== "user" && (
+                      <div className="flex items-center gap-2 mb-3 text-indigo-400">
+                        <div className="p-1 bg-indigo-500/10 rounded-lg">
+                          <Bot size={16} />
                         </div>
-                      ))}
+                        <span className="text-sm font-medium text-slate-300">
+                          neos
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="prose prose-invert prose-sm md:prose-base max-w-none leading-relaxed text-slate-200">
+                      <ReactMarkdown>{msg.text || ""}</ReactMarkdown>
                     </div>
-                  )}
+
+                    {/* Attachments Display */}
+                    {msg.attachments && msg.attachments.length > 0 && (
+                      <div
+                        className={`flex flex-wrap gap-2 mt-3 ${
+                          msg.sender === "user"
+                            ? "justify-end"
+                            : "justify-start"
+                        }`}
+                      >
+                        {msg.attachments.map((att, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center gap-2 bg-black/30 px-3 py-2 rounded-lg text-xs border border-white/10"
+                          >
+                            <Paperclip size={12} className="text-slate-400" />
+                            <span className="truncate max-w-[150px] text-slate-300">
+                              {att.name || "Anexo"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
 
-            {/* Typing Indicator */}
-            {isLoading && (
-              <div className="flex justify-start">
-                <TypingIndicator />
-              </div>
-            )}
+              {/* Typing Indicator */}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <TypingIndicator />
+                </div>
+              )}
 
-            <div ref={messagesEndRef} />
+              <div ref={messagesEndRef} />
+            </div>
           </div>
 
           {/* Input Area */}
-          <div className="p-4 bg-slate-900/80 border-t border-slate-800">
-            {/* Attachments Preview */}
-            {attachments.length > 0 && (
-              <div className="flex gap-2 mb-2 overflow-x-auto pb-2">
-                {attachments.map((att, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-full text-xs text-slate-300 border border-slate-700"
-                  >
-                    <span className="truncate max-w-[100px]">{att.name}</span>
-                    <button
-                      onClick={() => removeAttachment(i)}
-                      className="hover:text-red-400"
+          <div className="p-4 flex justify-center">
+            <div className="w-full max-w-3xl">
+              {/* Attachments Preview */}
+              {attachments.length > 0 && (
+                <div className="flex gap-2 mb-3 overflow-x-auto pb-2">
+                  {attachments.map((att, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-full text-xs text-slate-300 border border-slate-700"
                     >
-                      <X size={12} />
+                      <span className="truncate max-w-[100px]">{att.name}</span>
+                      <button
+                        onClick={() => removeAttachment(i)}
+                        className="hover:text-red-400 transition-colors"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="bg-[#1e1f20] rounded-[2rem] p-4 transition-colors shadow-lg">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder="Pergunte ao neos"
+                  className="w-full bg-transparent text-slate-100 placeholder-slate-500 px-2 focus:outline-none resize-none min-h-[60px] scrollbar-hide text-base mb-2"
+                  rows={1}
+                  disabled={isLoading || !isConnected}
+                  style={{ height: "auto", minHeight: "60px" }}
+                />
+
+                <div className="flex justify-between items-center">
+                  {/* Model Selector (Left) */}
+                  <div className="flex items-center gap-2 bg-[#2a2b2d] rounded-full px-3 py-1.5 border border-slate-700/30">
+                    <span className="text-[10px] text-slate-400 font-medium mr-1">
+                      Raciocínio
+                    </span>
+                    <select
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                      className="bg-transparent text-slate-300 text-xs font-medium focus:ring-0 outline-none border-none cursor-pointer hover:text-white appearance-none pr-4 relative z-10"
+                      style={{ backgroundImage: "none" }}
+                    >
+                      <option
+                        value="gemini"
+                        className="bg-[#1e1f20] text-slate-300"
+                      >
+                        Gemini 1.5 Flash
+                      </option>
+                      <option
+                        value="openai"
+                        className="bg-[#1e1f20] text-slate-300"
+                      >
+                        GPT-4o
+                      </option>
+                    </select>
+                  </div>
+
+                  {/* Actions (Right) */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="p-2 text-slate-400 hover:text-indigo-400 hover:bg-slate-800/50 rounded-full transition-all"
+                      title="Anexar arquivo"
+                    >
+                      <Paperclip size={20} />
+                    </button>
+                    <input
+                      type="file"
+                      multiple
+                      ref={fileInputRef}
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+
+                    <button
+                      onClick={handleSendMessage}
+                      disabled={
+                        isLoading ||
+                        !isConnected ||
+                        (!input.trim() && attachments.length === 0)
+                      }
+                      className={`p-2 rounded-full transition-all ${
+                        isLoading || (!input.trim() && attachments.length === 0)
+                          ? "text-slate-600 bg-transparent cursor-not-allowed"
+                          : "text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/20"
+                      }`}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="animate-spin" size={20} />
+                      ) : (
+                        <Send size={20} />
+                      )}
                     </button>
                   </div>
-                ))}
+                </div>
               </div>
-            )}
 
-            <div className="flex gap-2">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="p-3 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
-                title="Anexar arquivo"
-              >
-                <Paperclip size={20} />
-              </button>
-              <input
-                type="file"
-                multiple
-                ref={fileInputRef}
-                className="hidden"
-                onChange={handleFileSelect}
-              />
+              <div className="flex justify-between items-center mt-3 px-2">
+                {/* Model Selector in Footer */}
 
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="Digite sua mensagem..."
-                className="flex-grow bg-purple-600/5 text-white placeholder-slate-400 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500/50 border border-purple-500/20"
-                disabled={isLoading || !isConnected}
-              />
-              <button
-                onClick={handleSendMessage}
-                disabled={
-                  isLoading ||
-                  !isConnected ||
-                  (!input.trim() && attachments.length === 0)
-                }
-                className="p-3 bg-purple-600/20 text-purple-200 rounded-xl hover:bg-purple-600/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all border border-purple-500/30"
-              >
-                {isLoading ? (
-                  <Loader2 className="animate-spin" size={20} />
-                ) : (
-                  <Send size={20} />
-                )}
-              </button>
-            </div>
-            <div className="text-center mt-2">
-              <p className="text-[10px] text-slate-600">
-                RAG SYS-RH pode cometer erros. Verifique as informações
-                importantes.
-              </p>
+                <p className="text-[10px] text-slate-600">
+                  neos pode cometer erros. Verifique as informações importantes.
+                </p>
+              </div>
             </div>
           </div>
         </div>

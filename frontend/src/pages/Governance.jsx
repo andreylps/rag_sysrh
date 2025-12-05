@@ -1,6 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { Inbox } from "lucide-react"; // Importando ícone
+import { API_BASE_URL } from "../config";
 
 // --- OPÇÕES ATUALIZADAS ---
 // Nova lista de tipos de solicitação conforme solicitado.
@@ -43,16 +44,12 @@ const Governance = () => {
     setResult(null);
 
     try {
-      const response = await axios.post(
-        "http://localhost:8080/api/v1/solicitacoes/",
-        {
-          titulo,
-          descricao,
-          // O backend precisa ser atualizado para aceitar estes novos valores!
-          tipo_solicitacao: tipoSolicitacao,
-          prioridade_sugerida: prioridadeSugerida,
-        }
-      );
+      const response = await axios.post(`${API_BASE_URL}/solicitacoes/`, {
+        titulo: titulo,
+        descricao: descricao,
+        tipo_solicitacao: tipoSolicitacao,
+        prioridade_sugerida: prioridadeSugerida,
+      });
       setResult(response.data);
       // Limpa o formulário após o envio bem-sucedido e reseta para os padrões
       setTitulo("");
@@ -62,9 +59,17 @@ const Governance = () => {
     } catch (err) {
       console.error(err);
       // Tenta extrair a mensagem de erro de validação do backend (útil se o Enum não bater)
-      const errorMsg =
-        err.response?.data?.detail ||
-        "Falha ao enviar solicitação. Verifique se o backend está rodando e se os tipos de solicitação estão alinhados.";
+      let errorMsg = "Falha ao enviar solicitação.";
+      if (err.response?.data?.detail) {
+        const detail = err.response.data.detail;
+        if (Array.isArray(detail)) {
+          errorMsg = detail
+            .map((e) => `${e.loc.join(".")}: ${e.msg}`)
+            .join(", ");
+        } else {
+          errorMsg = String(detail);
+        }
+      }
       setError(errorMsg);
     } finally {
       setLoading(false);

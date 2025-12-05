@@ -1,0 +1,30 @@
+FROM python:3.11-slim-bookworm
+
+# Instalar o uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+
+WORKDIR /app
+
+# Dependências do SO
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar todo o código primeiro
+COPY . .
+
+# --- A MUDANÇA ESTÁ AQUI ---
+# 1. Compila as dependências do pyproject.toml para um requirements.txt temporário
+# 2. Instala as dependências no sistema
+RUN uv pip compile pyproject.toml -o requirements.txt && \
+    uv pip install --system --no-cache -r requirements.txt
+
+# Configuração de usuário e porta
+RUN useradd -m appuser && chown -R appuser:appuser /app
+ENV PYTHONPATH=/app/src
+USER appuser
+
+EXPOSE 8080
+
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "4", "--proxy-headers"]
