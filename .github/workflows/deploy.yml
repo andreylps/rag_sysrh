@@ -30,15 +30,27 @@ jobs:
             REPO_URL="https://github.com/andreylps/rag_sysrh.git"
             # --------------------------------
 
+         
+
             echo "🔍 Verificando diretório do projeto em: $PROJECT_PATH"
 
             if [ -d "$PROJECT_PATH" ]; then
               # --- CENÁRIO 1: O projeto já existe ---
-              echo "📂 Pasta encontrada. Entrando e atualizando repositório..."
+              echo "📂 Pasta encontrada. Forçando atualização para a versão mais recente..."
               cd "$PROJECT_PATH"
-              # Garante que estamos na branch main antes de puxar
-              git checkout main
-              git pull origin main
+              
+              # --- NOVOS COMANDOS GIT (Mais robustos) ---
+              # 1. Busca as informações mais recentes do remoto sem baixar os arquivos ainda
+              git fetch origin main
+              
+              # 2. FORÇA (hard reset) a pasta local a ficar IDÊNTICA à versão do GitHub
+              # Isso evita conflitos e o erro de branch desconhecida.
+              git reset --hard origin/main
+              # ----------------------------------------
+              
+            else
+              # --- CENÁRIO 2: Primeira vez (pasta não existe) ---
+              # ... (o resto do arquivo continua igual) ...
             else
               # --- CENÁRIO 2: Primeira vez (pasta não existe) ---
               echo "🤷‍♂️ Pasta não encontrada. Realizando o primeiro clone..."
