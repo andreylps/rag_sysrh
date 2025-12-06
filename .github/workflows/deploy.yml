@@ -26,66 +26,57 @@ jobs:
             set -e # Para o script se qualquer comando falhar
 
             # --- Configurações do Caminho ---
-            PROJECT_PATH="/noesys_deploy/RAG_SYSRH"
+            PROJECT_PATH="/root/noesys_deploy/RAG_SYSRH"
+            FRONTEND_PATH="$PROJECT_PATH/src/frontend"
+            NGINX_PATH="/var/www/html/rag_sysrh"
             REPO_URL="https://github.com/andreylps/rag_sysrh.git"
             # --------------------------------
-
-         
 
             echo "🔍 Verificando diretório do projeto em: $PROJECT_PATH"
 
             if [ -d "$PROJECT_PATH" ]; then
-              # --- CENÁRIO 1: O projeto já existe ---
               echo "📂 Pasta encontrada. Forçando atualização para a versão mais recente..."
               cd "$PROJECT_PATH"
-              
-              # --- NOVOS COMANDOS GIT (Mais robustos) ---
-              # 1. Busca as informações mais recentes do remoto sem baixar os arquivos ainda
               git fetch origin main_1
-              
-              # 2. FORÇA (hard reset) a pasta local a ficar IDÊNTICA à versão do GitHub
-              # Isso evita conflitos e o erro de branch desconhecida.
               git reset --hard origin/main_1
-              # ----------------------------------------
-              
-          
             else
-              # --- CENÁRIO 2: Primeira vez (pasta não existe) ---
               echo "🤷‍♂️ Pasta não encontrada. Realizando o primeiro clone..."
-              # Cria o diretório pai se necessário (ex: /noesys_deploy)
               mkdir -p "$(dirname "$PROJECT_PATH")"
-              # Clona o projeto para a pasta destino
               git clone "$REPO_URL" "$PROJECT_PATH"
-              # Entra na pasta recém-criada
               cd "$PROJECT_PATH"
               echo "✅ Clone inicial concluído com sucesso."
             fi
 
-            
-           # --- A partir daqui, já estamos dentro da pasta correta ---
-
-            echo "📦 Instalando/Atualizando dependências com uv..."
-            # Garante que o uv está instalado (caso a VPS seja nova)
+            # --- ATUALIZAÇÃO DO BACKEND (PYTHON) ---
+            echo "🐍 [BACKEND] Instalando/Atualizando dependências com uv..."
+            export PATH="$HOME/.local/bin:$PATH"
             if ! command -v uv &> /dev/null; then
                 echo "Installing uv..."
                 curl -LsSf https://astral.sh/uv/install.sh | sh
-                # --- LINHA CORRIGIDA AQUI: ---
-                export PATH="$HOME/.local/bin:$PATH"
-                # -----------------------------
             fi
-            
-            # Garante que o caminho esteja visível mesmo se o uv já estava instalado
-            export PATH="$HOME/.local/bin:$PATH"
-
-            echo "Sincronizando dependências..."
             uv sync
 
-            # Nota: Os comandos de systemd vão falhar agora porque o serviço 
-            # ainda não foi criado. Vamos manter comentado por enquanto.
-            echo "🔄 Reiniciando serviço Systemd..."
+            # --- ATUALIZAÇÃO DO FRONTEND (REACT/VITE) ---
+            echo "⚛️ [FRONTEND] Iniciando build..."
+            cd "$FRONTEND_PATH"
+            
+            echo "📦 Instalando dependências do Node (npm install)..."
+            npm install
+
+            echo "🔨 Construindo a aplicação (npm run build)..."
+            npm run build
+
+            echo "🚚 Movendo arquivos para o servidor Nginx..."
+            # Garante que a pasta destino existe
+            sudo mkdir -p "$NGINX_PATH"
+            # Sincroniza a pasta dist com a pasta do Nginx
+            sudo rsync -av --delete dist/ "$NGINX_PATH/"
+
+            # --- FINALIZAÇÃO ---
+            echo "🔄 Reiniciando serviço Systemd do Backend..."
             sudo systemctl restart noesys-backend.service
 
-            echo "✅ Deploy concluído com sucesso! (Código e dependências prontos)"
+            echo "✅ DEPLOY COMPLETO COM SUCESSO! (Backend + Frontend atualizados)"
           EOF
 
 # Trigger update
