@@ -196,42 +196,47 @@ class AnalistaWorkflow:
         # Verifica se existe um contexto "quente" no cache baseado no domínio da pergunta
         from src.rag_sysrh.services.cag_service import cag_service
 
-        # --- BLOCO DE DEBUG E FALLBACK CAG ---
-        print(
-            f"\nDEBUG: [WORKFLOW] Iniciando análise para: {state.get('solicitacao_original', 'N/A')}"
-        )
-
-        # 1. Tenta recuperar o contexto global SISP (Injeção de Memória)
+        # --- INJEÇÃO NUCLEAR (FIX 07/12) ---
+        # Recupera memória SISP e injeta direto no Prompt do Usuário
         try:
-            print("DEBUG: [CAG] Tentando ler chave global 'sisp_completo'...")
-            contexto_global = await cag_service.get_context("sisp_completo")
+            print(
+                f"DEBUG: Analisando solicitacao: {state.get('solicitacao_original', 'N/A')}"
+            )
+            # Ensure get_redis is available if top-level import fails or for clarity as in snippet
+            from src.rag_sysrh.infra.cache import get_redis
 
-            if contexto_global:
+            rc = await get_redis()
+            mem = await rc.get("sisp_completo")
+
+            if mem:
                 print(
-                    f"DEBUG: [CAG HIT] Sucesso! Encontrados {len(contexto_global)} caracteres."
+                    f"DEBUG: [NUCLEAR] Memória Redis encontrada ({len(mem)} chars). Injetando..."
                 )
-                print(f"DEBUG: [CAG CONTENT] Início: {contexto_global[:100]}...")
 
-                # INJEÇÃO: Adiciona ao contexto recuperado para a LLM ler
-                current_docs = state.get("dados_manuais", "") or ""
+                # Formata o contexto para ser impossível de ignorar
+                contexto_extra = (
+                    f"\n\n[CONTEXTO PRIORITÁRIO RECUPERADO DO SISTEMA]: {mem}"
+                )
 
-                if isinstance(current_docs, list):
-                    current_docs.append(
-                        f"CONTEXTO PRIORITÁRIO (MEMÓRIA): {contexto_global}"
-                    )
-                else:
-                    current_docs = str(current_docs) if current_docs else ""
-                    prefix = "\n\n" if current_docs else ""
-                    current_docs = f"{current_docs}{prefix}CONTEXTO PRIORITÁRIO (MEMÓRIA): {contexto_global}"
+                # 1. Injeta na Pergunta Original (Garante que a LLM leia)
+                if "solicitacao_original" in state:
+                    state["solicitacao_original"] += contexto_extra
 
-                state["dados_manuais"] = current_docs
-                print("DEBUG: [CAG] Contexto injetado no state['dados_manuais'].")
+                # 2. Injeta na lista de documentos (Backup padrão)
+                if "docs" not in state:
+                    state["docs"] = []
+                if isinstance(state["docs"], list):
+                    state["docs"].append(contexto_extra)
+
+                print(
+                    "DEBUG: [NUCLEAR] Contexto injetado na solicitacao_original com sucesso!"
+                )
             else:
-                print("DEBUG: [CAG MISS] A chave 'sisp_completo' retornou vazia.")
+                print("DEBUG: [CAG MISS] Cache sisp_completo vazio.")
 
-        except Exception as e:
-            print(f"DEBUG: [CAG ERROR] Falha ao ler Redis: {e}")
-        # -------------------------------------
+        except Exception as e_nuc:
+            print(f"DEBUG: [NUCLEAR ERROR] Falha na injeção de memória: {e_nuc}")
+        # -----------------------------------
 
         print(
             f"DEBUG: Iniciando busca para a pergunta: {state['solicitacao_original']}"
