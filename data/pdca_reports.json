@@ -180,5 +180,135 @@
     },
     "audit_type": "CODE_AUDIT",
     "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "c67cd351-2882-4103-87ec-5d316ec6a7a6",
+    "generation_date": "2025-12-06 07:41:48.393866",
+    "cycle_period": "DAILY_CHECK - Dec/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_c67cd351-2882-4103-87ec-5d316ec6a7a6.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "0fa9b0b6-b9be-4278-a478-d9c1233c3aa0",
+    "generation_date": "2025-12-06 07:41:48.467026",
+    "cycle_period": "DAILY_CHECK - Dec/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_0fa9b0b6-b9be-4278-a478-d9c1233c3aa0.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "ac135e92-1122-4f21-8a22-ee9bd04f76a5",
+    "generation_date": "2025-12-06 07:41:48.524088",
+    "cycle_period": "CODEREVIEW_AUDIT - Dec/2025",
+    "summary": "Auditoria Técnica (Pull Requests). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_CODEREVIEW_AUDIT_ac135e92-1122-4f21-8a22-ee9bd04f76a5.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "CODEREVIEW_AUDIT",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "3f13aa40-cf9d-4256-b52a-ed45d7f46a81",
+    "generation_date": "2025-12-06 07:41:48.591383",
+    "cycle_period": "DAILY_CHECK - Dec/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_3f13aa40-cf9d-4256-b52a-ed45d7f46a81.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "7a1eb18b-c8be-4579-9976-e48f6121095f",
+    "generation_date": "2025-12-06 07:41:48.651765",
+    "cycle_period": "CODEREVIEW_AUDIT - Dec/2025",
+    "summary": "Auditoria Técnica (Pull Requests). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_CODEREVIEW_AUDIT_7a1eb18b-c8be-4579-9976-e48f6121095f.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "CODEREVIEW_AUDIT",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "fbdc2a3f-a000-4e0b-8b0c-57383819c060",
+    "generation_date": "2025-12-06 07:41:48.735778",
+    "cycle_period": "DAILY_CHECK - Dec/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_fbdc2a3f-a000-4e0b-8b0c-57383819c060.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "865fbe8b-380d-42d7-a3b8-44f8429f2793",
+    "generation_date": "2025-12-06 07:41:48.800640",
+    "cycle_period": "DAILY_CHECK - Dec/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_865fbe8b-380d-42d7-a3b8-44f8429f2793.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "00b4fdcc-8ff5-47fc-8e9d-fad71807109e",
+    "generation_date": "2025-12-06 07:41:48.864535",
+    "cycle_period": "CODE_AUDIT - Dec/2025",
+    "summary": "Auditoria Técnica (Padrões de Projeto). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_CODE_AUDIT_00b4fdcc-8ff5-47fc-8e9d-fad71807109e.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "CODE_AUDIT",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "afc72cdc-e3cd-48c9-9fe5-dfec093acb3e",
+    "generation_date": "2025-12-06 07:41:48.925671",
+    "cycle_period": "CODEREVIEW_AUDIT - Dec/2025",
+    "summary": "Auditoria Técnica (Pull Requests). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_CODEREVIEW_AUDIT_afc72cdc-e3cd-48c9-9fe5-dfec093acb3e.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "CODEREVIEW_AUDIT",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
+  },
+  {
+    "id": "b030b7f9-5e5c-4dae-99ee-81dd3aeb20df",
+    "generation_date": "2025-12-06 07:41:48.979590",
+    "cycle_period": "DAILY_CHECK - Dec/2025",
+    "summary": "Auditoria Técnica (Geral). Código segue padrões.",
+    "pdf_file_path": "data/reports/pdca\\PDCA_DAILY_CHECK_b030b7f9-5e5c-4dae-99ee-81dd3aeb20df.pdf",
+    "metrics_snapshot": {
+      "itens_verificados": 50,
+      "conformidade": "98%"
+    },
+    "audit_type": "DAILY_CHECK",
+    "improvement_suggestion": "Manter boas práticas de Clean Code."
   }
 ]

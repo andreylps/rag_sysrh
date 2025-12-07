@@ -5,7 +5,9 @@ from docx import Document
 
 # Configurações de Caminhos
 # Em um cenário real, isso viria de variáveis de ambiente ou config.py
-SIMULATOR_DOCS_PATH = "D:/Projeto IA/PROJETOS/rh-gov-simulador/docs"
+SIMULATOR_DOCS_PATH = os.path.join(
+    os.getenv("RHGOV_PROJECT_ROOT", "D:/Projeto IA/PROJETOS/RH_GOV_SIMULADOR"), "docs"
+)
 LOCAL_DOCS_ARCHIVE_PATH = "data/manuais"
 
 
@@ -90,4 +92,4 @@ def generate_or_update_operational_manual(issue: dict, issue_type: str) -> str:
         # Retorna o caminho do simulador para uso posterior (validação)
         return simulator_file_path
     except Exception as e:
-        raise RuntimeError(f"Erro ao salvar manual: {str(e)}")
+        raise RuntimeError(f"Erro ao salvar manual: {e!s}")

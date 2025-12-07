@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 from src.agents.sniper_agent import SniperAgent
@@ -19,7 +20,12 @@ class CommercialService:
         """
         # Caminho relativo para o simulador (ajustar conforme estrutura de pastas real)
         # Assumindo que o backend roda em RAG_SYSRH e o simulador está em rh-gov-simulador
-        target_path = "rh-gov-simulador"
+        # Caminho relativo para o simulador
+        # Assumindo que o backend roda em RAG_SYSRH e o simulador está em rh-gov-simulador
+        target_path = os.getenv("RHGOV_PROJECT_ROOT")
+        if not target_path:
+            # Fallback seguro ou erro
+            target_path = "../rh-gov-simulador"
 
         new_opportunities = await self.sniper_agent.scan_codebase(target_path)
 

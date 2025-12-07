@@ -70,15 +70,17 @@ class SniperAgent:
         except Exception as e:
             return f"Erro ao ler arquivo: {e!s}"
 
-    async def scan_codebase(
-        self, target_path: str = "rh-gov-simulador"
-    ) -> list[dict[str, Any]]:
+    async def scan_codebase(self, target_path: str = None) -> list[dict[str, Any]]:
         """
         Varre o código fonte alvo e gera oportunidades.
 
         Args:
             target_path: Caminho relativo ou absoluto para o diretório do projeto alvo.
         """
+        if target_path is None:
+            target_path = os.getenv(
+                "RHGOV_PROJECT_ROOT", "D:/Projeto IA/PROJETOS/RH_GOV_SIMULADOR"
+            )
         opportunities = []
 
         # Mapear arquivos (limitando a alguns chave para demonstração/performance)

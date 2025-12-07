@@ -593,5 +593,155 @@
     "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
     "created_at": "2025-11-27T18:27:16.175240",
     "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:48.440335",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:48.440342",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:48.440344",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:48.497365",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:48.497372",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:48.497373",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:48.555785",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:48.555791",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:48.555792",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:48.621723",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:48.621732",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:48.621735",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:48.701004",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:48.701014",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:48.701016",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:48.772314",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:48.772324",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:48.772326",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:48.836339",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:48.836346",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:48.836348",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:48.896852",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:48.896860",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:48.896861",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:48.955751",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:48.955757",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:48.955759",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Diretriz gerada em 06/12 07:41: Validar sempre os inputs de data.",
+    "created_at": "2025-12-06T07:41:49.009927",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Evitar uso de 'print' em produção, usar 'logger'.",
+    "created_at": "2025-12-06T07:41:49.009933",
+    "source": "PDCA_FEEDBACK"
+  },
+  {
+    "content": "Manter funções com no máximo 20 linhas para facilitar testes.",
+    "created_at": "2025-12-06T07:41:49.009934",
+    "source": "PDCA_FEEDBACK"
   }
 ]

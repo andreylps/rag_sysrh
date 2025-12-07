@@ -33,7 +33,7 @@ const Sidebar = ({ isAdmin, toggleAdmin }) => {
           <div className="logo-text">
             <span className="logo-title">NOESYS.AI</span>
             <span className="logo-subtitle">Agent Container</span>
-            <span className="logo-version">v.002-2025</span>
+            <span className="logo-version">v.003-2025</span>
           </div>
         </NavLink>
       </div>

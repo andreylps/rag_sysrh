@@ -1,7 +1,6 @@
 import logging
 import os
 from pathlib import Path
-from typing import List
 
 # Configuração de Logging
 logger = logging.getLogger(__name__)
@@ -11,7 +10,9 @@ def _get_project_root() -> Path:
     """
     Recupera e valida o diretório raiz do projeto simulador a partir da variável de ambiente.
     """
-    root_path = os.getenv("RHGOV_PROJECT_ROOT")
+    root_path = os.getenv(
+        "RHGOV_PROJECT_ROOT", "D:/Projeto IA/PROJETOS/RH_GOV_SIMULADOR"
+    )
     if not root_path:
         raise ValueError(
             "A variável de ambiente 'RHGOV_PROJECT_ROOT' não está definida."
@@ -43,7 +44,7 @@ def _validate_path(relative_path: str) -> Path:
     return target_path
 
 
-def list_files_in_directory(relative_path: str = ".") -> List[str]:
+def list_files_in_directory(relative_path: str = ".") -> list[str]:
     """
     Lista arquivos e diretórios em um caminho relativo dentro do projeto.
 
