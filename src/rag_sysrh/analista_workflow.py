@@ -196,6 +196,43 @@ class AnalistaWorkflow:
         # Verifica se existe um contexto "quente" no cache baseado no domínio da pergunta
         from src.rag_sysrh.services.cag_service import cag_service
 
+        # --- BLOCO DE DEBUG E FALLBACK CAG ---
+        print(
+            f"\nDEBUG: [WORKFLOW] Iniciando análise para: {state.get('solicitacao_original', 'N/A')}"
+        )
+
+        # 1. Tenta recuperar o contexto global SISP (Injeção de Memória)
+        try:
+            print("DEBUG: [CAG] Tentando ler chave global 'sisp_completo'...")
+            contexto_global = await cag_service.get_context("sisp_completo")
+
+            if contexto_global:
+                print(
+                    f"DEBUG: [CAG HIT] Sucesso! Encontrados {len(contexto_global)} caracteres."
+                )
+                print(f"DEBUG: [CAG CONTENT] Início: {contexto_global[:100]}...")
+
+                # INJEÇÃO: Adiciona ao contexto recuperado para a LLM ler
+                current_docs = state.get("dados_manuais", "") or ""
+
+                if isinstance(current_docs, list):
+                    current_docs.append(
+                        f"CONTEXTO PRIORITÁRIO (MEMÓRIA): {contexto_global}"
+                    )
+                else:
+                    current_docs = str(current_docs) if current_docs else ""
+                    prefix = "\n\n" if current_docs else ""
+                    current_docs = f"{current_docs}{prefix}CONTEXTO PRIORITÁRIO (MEMÓRIA): {contexto_global}"
+
+                state["dados_manuais"] = current_docs
+                print("DEBUG: [CAG] Contexto injetado no state['dados_manuais'].")
+            else:
+                print("DEBUG: [CAG MISS] A chave 'sisp_completo' retornou vazia.")
+
+        except Exception as e:
+            print(f"DEBUG: [CAG ERROR] Falha ao ler Redis: {e}")
+        # -------------------------------------
+
         print(
             f"DEBUG: Iniciando busca para a pergunta: {state['solicitacao_original']}"
         )
