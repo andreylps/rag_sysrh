@@ -10,7 +10,7 @@ import {
   Menu,
   X,
 } from "lucide-react";
-import { API_BASE_URL, WS_BASE_URL } from "../config";
+import { API_BASE_URL } from "../config";
 
 import ReactMarkdown from "react-markdown";
 import ChatSidebar from "../components/ChatSidebar";
@@ -127,7 +127,9 @@ const Chat = () => {
     setIsConnected(false);
     setConnectionError(null);
 
-    const wsUrl = `${WS_BASE_URL}/chat/ws`;
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    // FORÇA o caminho correto /api/v1/chat/ws
+    const wsUrl = `${protocol}//${window.location.host}/api/v1/chat/ws`;
 
     try {
       console.log(`Attempting WebSocket connection to ${wsUrl}...`);
