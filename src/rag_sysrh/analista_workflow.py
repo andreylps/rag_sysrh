@@ -196,10 +196,26 @@ class AnalistaWorkflow:
         # Verifica se existe um contexto "quente" no cache baseado no domínio da pergunta
         from src.rag_sysrh.services.cag_service import cag_service
 
+        print(
+            f"DEBUG: Iniciando busca para a pergunta: {state['solicitacao_original']}"
+        )
         cache_key = self._determine_cache_key(state["solicitacao_original"])
         logging.info(f"🔑 Chave CAG determinada: '{cache_key}'")
 
         cag_context = await cag_service.get_context(cache_key)
+
+        # Tenta recuperar o contexto global SISP (se não foi o retornado inicialmente)
+        if not cag_context:
+            print(
+                f"DEBUG: Chave '{cache_key}' vazia. Tentando fallback para 'sisp_completo'..."
+            )
+            contexto_cache = await cag_service.get_context("sisp_completo")
+            if contexto_cache:
+                print("DEBUG: [CAG HIT] Contexto sisp_completo encontrado no Redis!")
+                cag_context = contexto_cache
+                cache_key = "sisp_completo"
+            else:
+                print("DEBUG: [CAG MISS] Chave sisp_completo não encontrada ou vazia.")
 
         if cag_context:
             logging.info(
