@@ -172,6 +172,38 @@ async def root():
     }
 
 
+# --- PROVISIONAL: CAG Warmup Endpoint ---
+from pydantic import BaseModel
+
+from src.rag_sysrh.services.cag_service import cag_service
+
+
+class WarmupRequest(BaseModel):
+    key: str = "sisp_completo"
+    content: str | None = None
+
+
+@app.post("/api/admin/warmup/sisp", tags=["Admin"])
+async def warmup_sisp(request: WarmupRequest):
+    """
+    Endpoint manual para aquecer o cache do SISP (CAG).
+    """
+    key = request.key
+    content = request.content
+
+    if not content:
+        # Mock content if not provided
+        content = "CONTEÚDO DO MANUAL SISP (MOCK) - Carregado via API Endpoint. " * 50
+
+    success = await cag_service.save_context(key, content, ttl_minutes=60)
+
+    if success:
+        return {"message": f"Contexto '{key}' salvo com sucesso.", "size": len(content)}
+    return JSONResponse(
+        status_code=500, content={"message": "Falha ao salvar no Redis."}
+    )
+
+
 if __name__ == "__main__":
     # Se rodar este arquivo diretamente, usa a porta 8080
     uvicorn.run("main:app", host="127.0.0.1", port=8080, reload=True)

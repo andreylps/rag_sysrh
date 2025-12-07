@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import logging
 
 from langchain_classic.agents import AgentExecutor, create_react_agent
@@ -67,12 +66,10 @@ Thought: {agent_scratchpad}"""  # noqa: E501
         verbose=True,
         handle_parsing_errors=True,
     )
-=======
+
+
 import logging
 
-from langchain_classic.agents import AgentExecutor, create_react_agent
-from langchain_classic.memory.buffer import ConversationBufferMemory
-from langchain_core.prompts import PromptTemplate
 from langchain_core.tools import Tool
 from langchain_openai import ChatOpenAI
 
@@ -146,4 +143,3 @@ Thought: {agent_scratchpad}"""  # noqa: E501
         verbose=True,
         handle_parsing_errors=_handle_parsing_errors,
     )
->>>>>>> b55c263f4c6229631e8d58bea7ffd1b4e1a45bae

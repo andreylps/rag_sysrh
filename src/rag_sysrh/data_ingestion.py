@@ -496,6 +496,26 @@ class DataIngestion:
             params={"openAiApiKey": os.getenv("OPENAI_API_KEY")},
         )
 
+        # --- Invalidação de Cache CAG ---
+        logging.info("Invalidando caches do CAG (Context Augmented Generation)...")
+        import asyncio
+
+        from src.rag_sysrh.services.cag_service import cag_service
+
+        try:
+            # Tenta usar asyncio.run() (funciona se não houver loop ativo)
+            asyncio.run(cag_service.invalidate_all())
+        except RuntimeError:
+            # Se já existir um loop (ex: ambiente Streamlit/Tornado), usa-o
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(cag_service.invalidate_all())
+                else:
+                    loop.run_until_complete(cag_service.invalidate_all())
+            except Exception as e:
+                logging.exception(f"Falha ao invalidar cache CAG: {e}")
+
         logging.info("Ingestão de dados no Neo4j concluída com sucesso!")  # noqa: LOG015
 
 

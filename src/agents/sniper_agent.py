@@ -93,6 +93,12 @@ class SniperAgent:
         target_files = [
             f for f in all_files if "models" in f or "api" in f or "endpoints" in f
         ]
+
+        if not target_files:
+            print(
+                "DEBUG: Filtros principais não retornaram arquivos. Usando fallback para todos os arquivos encontrados."
+            )
+            target_files = all_files
         print(f"DEBUG: Arquivos alvo filtrados: {len(target_files)}")
         target_files = target_files[:5]  # Limite para não estourar tokens/tempo na POC
 

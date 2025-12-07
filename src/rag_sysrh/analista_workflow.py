@@ -175,12 +175,48 @@ class AnalistaWorkflow:
         resultado_historico = factual_tool.invoke({"input": query})
         return {"dados_historico": resultado_historico}
 
-    def consultar_manuais(self, state: WorkflowState):  # noqa: ANN201
+    def _determine_cache_key(self, text: str) -> str:
+        """Determina a chave de cache do CAG com base no conteúdo da solicitação."""
+        text_lower = text.lower()
+
+        # Regras simples de roteamento de contexto
+        if any(
+            term in text_lower
+            for term in ["faturamento", "custo", "financeiro", "valor", "pagamento"]
+        ):
+            return "faturamento_rules"
+
+        # Default para procedimentos gerais do SISP
+        return "sisp_completo"
+
+    async def consultar_manuais(self, state: WorkflowState):  # noqa: ANN201
         logging.info("Passo 3: Consultando manuais e regras de negócio...")  # noqa: LOG015
+
+        # --- CAG: Context Augmented Generation ---
+        # Verifica se existe um contexto "quente" no cache baseado no domínio da pergunta
+        from src.rag_sysrh.services.cag_service import cag_service
+
+        cache_key = self._determine_cache_key(state["solicitacao_original"])
+        logging.info(f"🔑 Chave CAG determinada: '{cache_key}'")
+
+        cag_context = await cag_service.get_context(cache_key)
+
+        if cag_context:
+            logging.info(
+                f"⚡ [CAG Cached Hit] Contexto '{cache_key}' recuperado do Redis."
+            )
+            # Retorna o contexto do cache, prefixado para indicar a origem
+            return {
+                "dados_manuais": f"[CAG CACHE ATIVO ({cache_key})] Contexto Recuperado:\n{cag_context}"
+            }
+
+        # Fallback: Busca Vetorial Padrão
+        logging.info(f"Cache Miss ({cache_key}). Executando busca vetorial no Neo4j...")
         query = (
             f"Explique o procedimento ou regra sobre: '{state['solicitacao_original']}'"
         )
         semantic_tool = self.tools_by_name["Semantic_Question_Answering"]
+        # Invocação síncrona da tool (compatível se thread executora permitir I/O)
         resultado_manuais = semantic_tool.invoke({"input": query})
         return {"dados_manuais": resultado_manuais}
 

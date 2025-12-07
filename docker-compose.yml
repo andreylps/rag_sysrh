@@ -67,9 +67,20 @@ services:
     networks:
       - noesys_net
 
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis_data:/data
+    networks:
+      - noesys_net
+
 volumes:
   simulador_code_data:
   neo4j_data:
+  redis_data:
 
 networks:
   noesys_net:
