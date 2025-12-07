@@ -130,7 +130,7 @@ const Chat = () => {
     const wsUrl = `${WS_BASE_URL}/chat/ws`;
 
     try {
-      console.log("Attempting WebSocket connection to 127.0.0.1...");
+      console.log(`Attempting WebSocket connection to ${wsUrl}...`);
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = () => {
