@@ -213,9 +213,16 @@ class AnalistaWorkflow:
                     f"DEBUG: [NUCLEAR] Memória Redis encontrada ({len(mem)} chars). Injetando..."
                 )
 
-                # Formata o contexto para ser impossível de ignorar
+                # --- INJEÇÃO NUCLEAR V2 (COM COMANDO DE RESPOSTA) ---
+                # Formata o contexto e DÁ UMA ORDEM DIRETA para a LLM
                 contexto_extra = (
-                    f"\n\n[CONTEXTO PRIORITÁRIO RECUPERADO DO SISTEMA]: {mem}"
+                    f"\n\n--- FONTE VERDADEIRA E OFICIAL (SISP) ---\n"
+                    f"{mem}\n"
+                    f"---------------------------------------------\n"
+                    f"INSTRUÇÃO OBRIGATÓRIA: O usuário fez uma pergunta direta. "
+                    f"Você DEVE responder a ele usando EXCLUSIVAMENTE as informações acima (FONTE VERDADEIRA). "
+                    f"Cite os valores (ex: R$ 850,00) e formulários. "
+                    f"NÃO aja como um analista técnico sugerindo melhorias. AJA COMO SUPORTE RH e responda a dúvida."
                 )
 
                 # 1. Injeta na Pergunta Original (Garante que a LLM leia)
